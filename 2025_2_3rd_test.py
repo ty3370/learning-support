@@ -162,17 +162,17 @@ def save_chat(subject, topic, chat):
 def chatbot_tab(subject, topic):
     key = f"chat_{subject}_{topic}".replace(" ", "_")
     load_key = f"loading_{key}"
-    buffer_key = f"buffer_{key}"
-    widget_key = f"textarea_{key}"
+    input_key = f"buffer_{key}"
+    widget_key_base = f"textarea_{key}"
 
+    # 1) 세션 초기화
     if key not in st.session_state:
         st.session_state[key] = load_chat(subject, topic)
     if load_key not in st.session_state:
         st.session_state[load_key] = False
-
     msgs = st.session_state[key]
 
-    # history
+    # 2) 기존 메시지 렌더링
     for msg in msgs:
         if msg["role"] == "user":
             st.write(f"**You:** {msg['content']}")
@@ -189,52 +189,55 @@ def chatbot_tab(subject, topic):
                     if txt.strip():
                         st.write(f"**과학 도우미:** {txt.strip()}")
 
-    # input
+    # 3) 입력창 & 버튼 (토글 방식)
+    placeholder = st.empty()
     if not st.session_state[load_key]:
-        val = st.text_area("입력:", key=widget_key)
-        if st.button("전송", key=f"btn_{key}") and val.strip():
-            st.session_state[buffer_key] = val.strip()
-            st.session_state[load_key] = True
-            st.rerun()
+        with placeholder.container():
+            user_input = st.text_area("입력:", key=f"{widget_key_base}_{len(msgs)}")
+            if st.button("전송", key=f"send_{key}_{len(msgs)}") and user_input.strip():
+                st.session_state[input_key] = user_input.strip()
+                st.session_state[load_key] = True
+                st.rerun()
 
+    # 4) 로딩 상태일 때만 OpenAI 호출
     if st.session_state[load_key]:
-        q = st.session_state.pop(buffer_key, "")
-        # RAG
-        rag_key = f"rag_{subject}_{topic}".replace(" ", "_")
-        if rag_key not in st.session_state:
-            txts = []
-            for fn in PDF_MAP[topic]:
-                path = os.path.join(BASE_DIR, fn)
-                txts.append(extract_text_from_pdf(path))
-            full = "\n\n".join(txts)
-            chunks = chunk_text(full)
-            embs = embed_texts(chunks)
-            st.session_state[rag_key] = (chunks, embs)
-        chunks, embs = st.session_state[rag_key]
-        ctx_chunks = get_relevant_chunks(q, chunks, embs)
-        ctx = "\n\n".join(ctx_chunks) if ctx_chunks else ""
+        q = st.session_state.pop(input_key, "")
+        if q:
+            # RAG 준비
+            rag_key = f"rag_{subject}_{topic}".replace(" ", "_")
+            if rag_key not in st.session_state:
+                texts = []
+                for fn in PDF_MAP[topic]:
+                    path = os.path.join(BASE_DIR, fn)
+                    texts.append(extract_text_from_pdf(path))
+                full = "\n\n".join(texts)
+                chunks = chunk_text(full)
+                embs = embed_texts(chunks)
+                st.session_state[rag_key] = (chunks, embs)
+            chunks, embs = st.session_state[rag_key]
+            ctx = "\n\n".join(get_relevant_chunks(q, chunks, embs)) if chunks else ""
 
-        system_msgs = [
-            {"role": "system", "content": COMMON_PROMPT},
-            {"role": "system", "content": SCIENCE_PROMPT},
-            {"role": "system", "content": f"관련된 교과서 내용입니다:\n\n{ctx}"}
-        ]
+            system_msgs = [
+                {"role": "system", "content": COMMON_PROMPT},
+                {"role": "system", "content": SCIENCE_PROMPT},
+                {"role": "system", "content": f"관련된 교과서 내용입니다:\n\n{ctx}"}
+            ]
 
-        with st.spinner("답변 생성 중…"):
-            resp = client.chat.completions.create(
-                model=MODEL,
-                messages=system_msgs + msgs + [{"role": "user", "content": q}]
-            )
-        ans = resp.choices[0].message.content
-        ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
-        msgs.extend([
-            {"role": "user", "content": q, "timestamp": ts},
-            {"role": "assistant", "content": ans}
-        ])
-        save_chat(subject, topic, msgs)
-        st.session_state[key] = msgs
-        st.session_state[load_key] = False
-        st.rerun()
+            with st.spinner("답변 생성 중…"):
+                resp = client.chat.completions.create(
+                    model=MODEL,
+                    messages=system_msgs + msgs + [{"role": "user", "content": q}]
+                )
+            ans = resp.choices[0].message.content
+            ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
+            msgs.extend([
+                {"role": "user", "content": q, "timestamp": ts},
+                {"role": "assistant", "content": ans}
+            ])
+            save_chat(subject, topic, msgs)
+            st.session_state[key] = msgs
+            st.session_state[load_key] = False
+            st.rerun()
 
 # ===== Pages =====
 def page_1():
