@@ -81,9 +81,9 @@ def summarize_chunks(chunks, science_prompt):
             model=MODEL,
             messages=[
                 {"role": "system", "content": COMMON_PROMPT},
-                {"role": "system", "content": science_prompt},                   # ← 키워드 포함된 프롬프트
+                {"role": "system", "content": science_prompt},
                 {"role": "system",
-                 "content": "아래 텍스트를 중3 수준으로 간결히 요약해 주세요."},
+                 "content": "아래 텍스트를 앞서 언급된 키워드 중심으로 정리해 주세요."},
                 {"role": "user",   "content": chunk}
             ]
         )
