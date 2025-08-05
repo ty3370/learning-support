@@ -101,7 +101,10 @@ def chunk_text(text, size=1000):
     return [text[i:i+size] for i in range(0, len(text), size)]
 
 def embed_texts(texts):
-    res = client.embeddings.create(model="text-embedding-3-small", input=texts)
+    res = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=texts
+    )
     return [np.array(d.embedding) for d in res.data]
 
 def get_relevant_chunks(question, chunks, embeddings, top_k=3):
