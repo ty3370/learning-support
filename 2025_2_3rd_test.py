@@ -14,9 +14,9 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MODEL = "gpt-4o"
 BASE_DIR = os.path.expanduser("~/Textbook_2025")
 PDF_MAP = {
-    "Ⅳ. 자극과 반응": ["2025_Sci_3rd_04.pdf"],
-    "Ⅴ. 생식과 유전": ["2025_Sci_3rd_05.pdf"],
-    "Ⅵ. 에너지 전환과 보존": ["2025_Sci_3rd_06.pdf"]
+    "Ⅳ. 자극과 반응": ["2025_Sci_3rd_04.pdf", "2025_Sci_3rd_Sub.pdf"],
+    "Ⅴ. 생식과 유전": ["2025_Sci_3rd_05.pdf", "2025_Sci_3rd_Sub.pdf"],
+    "Ⅵ. 에너지 전환과 보존": ["2025_Sci_3rd_06.pdf", "2025_Sci_3rd_Sub.pdf"]
 }
 SUBJECTS = {"과학": list(PDF_MAP.keys())}
 
