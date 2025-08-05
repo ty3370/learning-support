@@ -5,7 +5,7 @@ from datetime import datetime
 from openai import OpenAI
 import re
 from zoneinfo import ZoneInfo
-import fitz  # PyMuPDF for PDF text extraction
+import fitz  # PyMuPDF
 import numpy as np
 import os
 
@@ -18,9 +18,7 @@ PDF_MAP = {
     "Ⅴ. 생식과 유전": ["2025_Sci_3rd_05.pdf", "2025_Sci_3rd_Sub.pdf"],
     "Ⅵ. 에너지 전환과 보존": ["2025_Sci_3rd_06.pdf", "2025_Sci_3rd_Sub.pdf"]
 }
-SUBJECTS = {
-    "과학": list(PDF_MAP.keys())
-}
+SUBJECTS = {"과학": list(PDF_MAP.keys())}
 
 # Initial prompts
 COMMON_PROMPT = (
@@ -59,8 +57,7 @@ SCIENCE_PROMPT = (
     "다음 이미지를 사용해 뇌와 척수 문제를 낼 수 있습니다: https://i.imgur.com/IRgZv7Q.png \n 이미지에는 뇌의 단면에 A~F 세 부분이 지정되어 있으며, A는 간뇌, B는 중간뇌, C는 연수, D는 대뇌, E는 소뇌, F는 척수입니다. 이 이미지를 활용한 문항을 제시할 수 있습니다. (예: 어두운 곳에 들어가면 동공이 커지는 반응의 중추는 무엇인지 기호와 이름을 써 보자.)\n"
 )
 
-# ===== Helper Functions =====
-
+# ===== Helpers =====
 def clean_inline_latex(text):
     text = re.sub(r",\s*\\text\{(.*?)\}", r" \1", text)
     text = re.sub(r"\\text\{(.*?)\}", r"\1", text)
@@ -79,30 +76,34 @@ def clean_inline_latex(text):
     text = re.sub(r"\b(minus)\b", "-", text)
     return text
 
-# PDF RAG utilities
+# RAG pipelines
 def extract_text_from_pdf(path):
     if not os.path.exists(path):
-        st.error(f"PDF 파일을 찾을 수 없습니다: {path}")
         return ""
     doc = fitz.open(path)
     return "\n\n".join(page.get_text() for page in doc)
 
-def chunk_text(text, chunk_size=1000):
-    return [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
+def chunk_text(text, size=1000):
+    return [text[i:i+size] for i in range(0, len(text), size)]
 
 def embed_texts(texts):
     res = client.embeddings.create(model="text-embedding-3-small", input=texts)
-    return [np.array(item.embedding) for item in res.data]
+    return [np.array(d.embedding) for d in res.data]
 
 def get_relevant_chunks(question, chunks, embeddings, top_k=3):
-    q_emb = np.array(client.embeddings.create(
-        model="text-embedding-3-small", input=[question]
-    ).data[0].embedding)
+    if not chunks:
+        return []
+    q_emb = np.array(
+        client.embeddings.create(
+            model="text-embedding-3-small", input=[question]
+        ).data[0].embedding
+    )
     sims = [np.dot(q_emb, emb)/(np.linalg.norm(q_emb)*np.linalg.norm(emb)) for emb in embeddings]
     idx = np.argsort(sims)[-top_k:][::-1]
     return [chunks[i] for i in idx]
 
-# ===== Database =====
+# DB
+
 def connect_to_db():
     return pymysql.connect(
         host=st.secrets["DB_HOST"],
@@ -127,10 +128,11 @@ def load_chat(subject, topic):
             "AND subject=%s AND topic=%s"
         )
         cur.execute(sql, (num, name, code, subject, topic))
-        row = cur.fetchone(); cur.close(); db.close()
+        row = cur.fetchone()
+        cur.close(); db.close()
         return json.loads(row[0]) if row else []
     except Exception as e:
-        st.error(f"DB 불러오기 오류: {e}")
+        st.error(f"DB 오류: {e}")
         return []
 
 def save_chat(subject, topic, chat):
@@ -146,30 +148,32 @@ def save_chat(subject, topic, chat):
             "(number,name,code,subject,topic,chat,time) VALUES(%s,%s,%s,%s,%s,%s,%s) "
             "ON DUPLICATE KEY UPDATE chat=VALUES(chat), time=VALUES(time)"
         )
-        timestamp = datetime.now(ZoneInfo("Asia/Seoul"))
+        ts = datetime.now(ZoneInfo("Asia/Seoul"))
         cur.execute(sql, (
             num, name, code, subject, topic,
-            json.dumps(chat, ensure_ascii=False), timestamp
+            json.dumps(chat, ensure_ascii=False), ts
         ))
         cur.close(); db.close()
     except Exception as e:
-        st.error(f"DB 저장 오류: {e}")
+        st.error(f"DB 오류: {e}")
 
-# ===== Chatbot UI =====
+# Chat UI
+
 def chatbot_tab(subject, topic):
     key = f"chat_{subject}_{topic}".replace(" ", "_")
     load_key = f"loading_{key}"
-    input_key = f"input_{key}"
+    buffer_key = f"buffer_{key}"
+    widget_key = f"textarea_{key}"
 
     if key not in st.session_state:
         st.session_state[key] = load_chat(subject, topic)
     if load_key not in st.session_state:
         st.session_state[load_key] = False
 
-    messages = st.session_state[key]
+    msgs = st.session_state[key]
 
-    # Render history
-    for msg in messages:
+    # history
+    for msg in msgs:
         if msg["role"] == "user":
             st.write(f"**You:** {msg['content']}")
         else:
@@ -178,38 +182,37 @@ def chatbot_tab(subject, topic):
                 if part.startswith("@@@@@") and part.endswith("@@@@@"):
                     st.latex(part[5:-5].strip())
                 else:
-                    clean_text = clean_inline_latex(part)
-                    imgs = re.findall(r"(https?://\S+\.(?:png|jpg))", clean_text)
-                    for link in imgs:
+                    txt = clean_inline_latex(part)
+                    for link in re.findall(r"(https?://\S+\.(?:png|jpg))", txt):
                         st.image(link)
-                        clean_text = clean_text.replace(link, "")
-                    if clean_text.strip():
-                        st.write(f"**과학 도우미:** {clean_text.strip()}")
+                        txt = txt.replace(link, "")
+                    if txt.strip():
+                        st.write(f"**과학 도우미:** {txt.strip()}")
 
-    # Input area
+    # input
     if not st.session_state[load_key]:
-        user_input = st.text_area("입력:", key=input_key)
-        if st.button("전송", key=f"btn_{key}") and user_input.strip():
-            st.session_state[input_key] = user_input.strip()
+        val = st.text_area("입력:", key=widget_key)
+        if st.button("전송", key=f"btn_{key}") and val.strip():
+            st.session_state[buffer_key] = val.strip()
             st.session_state[load_key] = True
             st.rerun()
 
-    # Generate response
     if st.session_state[load_key]:
-        q = st.session_state.get(input_key, "")
-        # Prepare RAG
+        q = st.session_state.pop(buffer_key, "")
+        # RAG
         rag_key = f"rag_{subject}_{topic}".replace(" ", "_")
         if rag_key not in st.session_state:
-            combined_text = []
+            txts = []
             for fn in PDF_MAP[topic]:
                 path = os.path.join(BASE_DIR, fn)
-                combined_text.append(extract_text_from_pdf(path))
-            full_text = "\n\n".join(combined_text)
-            chunks = chunk_text(full_text)
+                txts.append(extract_text_from_pdf(path))
+            full = "\n\n".join(txts)
+            chunks = chunk_text(full)
             embs = embed_texts(chunks)
             st.session_state[rag_key] = (chunks, embs)
         chunks, embs = st.session_state[rag_key]
-        ctx = "\n\n".join(get_relevant_chunks(q, chunks, embs))
+        ctx_chunks = get_relevant_chunks(q, chunks, embs)
+        ctx = "\n\n".join(ctx_chunks) if ctx_chunks else ""
 
         system_msgs = [
             {"role": "system", "content": COMMON_PROMPT},
@@ -220,16 +223,16 @@ def chatbot_tab(subject, topic):
         with st.spinner("답변 생성 중…"):
             resp = client.chat.completions.create(
                 model=MODEL,
-                messages=system_msgs + messages + [{"role": "user", "content": q}]
+                messages=system_msgs + msgs + [{"role": "user", "content": q}]
             )
         ans = resp.choices[0].message.content
         ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
-        messages.extend([
+        msgs.extend([
             {"role": "user", "content": q, "timestamp": ts},
             {"role": "assistant", "content": ans}
         ])
-        save_chat(subject, topic, messages)
-        st.session_state[key] = messages
+        save_chat(subject, topic, msgs)
+        st.session_state[key] = msgs
         st.session_state[load_key] = False
         st.rerun()
 
@@ -241,7 +244,7 @@ def page_1():
     st.session_state['user_name'] = st.text_input("이름", value=st.session_state.get('user_name',''))
     st.session_state['user_code'] = st.text_input("식별코드", value=st.session_state.get('user_code',''),
         help="타인의 학번과 이름으로 접속하는 것을 방지하기 위해 자신만 기억할 수 있는 코드를 입력하세요.")
-    st.markdown("> 🌟 **“생각하건대 현재의 고난은 장차 우리에게 나타날 영광과 비교할 수 없도다” — 로마서 8장 18절")
+    st.markdown("> 🌟 “생각하건대 현재의 고난은 장차 우리에게 나타날 영광과 비교할 수 없도다” — 로마서 8장 18절")
     if st.button("다음"):
         if not all([st.session_state['user_number'].strip(), st.session_state['user_name'].strip(), st.session_state['user_code'].strip()]):
             st.error("모든 정보를 입력해주세요.")
@@ -271,12 +274,21 @@ def page_2():
 def page_3():
     st.title("단원 학습")
 
-    subject = st.selectbox("과목을 선택하세요.", ["과목을 선택하세요.", "과학"])
-    if subject == "과목을 선택하세요.":
+    default_subject = "과목을 선택하세요."
+    subject = st.selectbox(
+        "과목을 선택하세요.",
+        [default_subject] + list(SUBJECTS.keys())
+    )
+    if subject == default_subject:
         return
 
-    unit = st.selectbox("대단원을 선택하세요.", ["대단원을 선택하세요."] + list(PDF_MAP.keys()))
-    if unit == "대단원을 선택하세요.":
+    default_unit = "대단원을 선택하세요."
+    units = SUBJECTS[subject]  # 과목별 대단원 리스트
+    unit = st.selectbox(
+        "대단원을 선택하세요.",
+        [default_unit] + units
+    )
+    if unit == default_unit:
         return
 
     chatbot_tab(subject, unit)
