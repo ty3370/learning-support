@@ -47,7 +47,10 @@ COMMON_PROMPT = (
 )
 
 SCIENCE_04_PROMPT = (
-    "당신은 과학의 Ⅳ. 자극과 반응 단원 학습 지원을 담당합니다. \n"
+    "당신은 과학의 Ⅳ. 자극과 반응 단원 학습 지원을 담당합니다. 아래 1~3을 고려해 학습을 지원하세요. \n"
+    "1. 단원의 주요 키워드: 눈의 구조와 기능, 홍채와 동공·섬모체와 수정체의 조절, 귀의 구조와 기능, 평형 감각, 코와 혀의 구조와 기능, 감각점의 종류와 피부 감각, 뉴런, 뇌의 구조와 기능, 자율 신경, 무조건 반사, 뇌하수체·갑상샘·부신·이자·난소·정소의 호르몬 및 관련 질병, 항상성과 체온·혈당량 조절\n"
+    "2. 학습 지원 지침: 이미지는 사용해도 되고, 이미지 없이 텍스트로만 설명해도 됩니다. 문제를 낼 때도 텍스트로만 이루어진 문제, 표로 정보가 제공되는 문제, 이미지를 해석하는 문제 등을 다양하게 출제하세요.\n"
+    "3. 사용 가능한 이미지 목록:\n"
     "눈의 구조와 기능을 그림으로 보여줄 때 다음 링크를 사용할 수 있습니다: https://i.imgur.com/BIFjdBj.png \n"
     "다음 이미지를 사용해 눈 문제를 낼 수 있습니다: https://i.imgur.com/KOOI7C1.png \n 이미지에는 눈의 단면에 A, B, C 세 부분이 지정되어 있으며, A는 홍채, B는 동공, C는 수정체입니다. 이 이미지를 활용한 문항을 제시할 수 있습니다. (예: 밝은 곳에서 어두운 곳을 갔을 때 B의 크기는 어떻게 변하는가?)\n"
     "귀의 구조와 기능을 그림으로 보여줄 때 다음 링크를 사용할 수 있습니다: https://i.imgur.com/uCPmN9l.png \n"
@@ -226,28 +229,34 @@ def chatbot_tab(subject, topic):
                 st.session_state[load_key] = True
                 st.rerun()
 
-    # 4) 로딩 상태일 때만 OpenAI 호출
+    # 4) 로딩 상태일 때만 OpenAI 호출 (하이브리드 방식)
     if st.session_state[load_key]:
         q = st.session_state.pop(input_key, "")
         if q:
-            # RAG 준비
-            rag_key = f"rag_{subject}_{topic}".replace(" ", "_")
-            if rag_key not in st.session_state:
-                texts = []
-                for fn in PDF_MAP[topic]:
-                    path = os.path.join(BASE_DIR, fn)
-                    texts.append(extract_text_from_pdf(path))
-                full = "\n\n".join(texts)
+            # PDF 전체 텍스트 읽기
+            texts = [extract_text_from_pdf(os.path.join(BASE_DIR, fn))
+                     for fn in PDF_MAP[topic]]
+            full = "\n\n".join(texts)
+
+            # 1️⃣ 한번만: 전체 요약 + embedding 캐시
+            sum_key = f"sum_{subject}_{topic}".replace(" ", "_")
+            if sum_key not in st.session_state:
                 chunks = chunk_text(full)
                 embs = embed_texts(chunks)
-                st.session_state[rag_key] = (chunks, embs)
-            chunks, embs = st.session_state[rag_key]
-            ctx = "\n\n".join(get_relevant_chunks(q, chunks, embs)) if chunks else ""
+                overall_summary = summarize_chunks(chunks)
+                st.session_state[sum_key] = (overall_summary, chunks, embs)
+            overall_summary, chunks, embs = st.session_state[sum_key]
 
+            # 2️⃣ 질문마다: RAG로 연관 청크 검색
+            relevant = get_relevant_chunks(q, chunks, embs)
+
+            # 3️⃣ 시스템 메시지 구성: 공통→단원프롬프트→전체요약→연관청크
             system_msgs = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_science_prompt},
-                {"role": "system", "content": f"관련된 교과서 내용입니다:\n\n{ctx}"}
+                {"role": "system", "content": f"단원 요약:\n{overall_summary}"},
+                {"role": "system", "content": 
+                    f"질문과 연관된 내용:\n\n{'\n\n'.join(relevant)}"}
             ]
 
             with st.spinner("답변 생성 중…"):
