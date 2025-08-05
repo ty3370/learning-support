@@ -14,9 +14,9 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MODEL = "gpt-4o"
 BASE_DIR = os.path.expanduser("~/Textbook_2025")
 PDF_MAP = {
-    "Ⅳ. 자극과 반응": ["2025_Sci_3rd_04.pdf", "2025_Sci_3rd_Sub.pdf"],
-    "Ⅴ. 생식과 유전": ["2025_Sci_3rd_05.pdf", "2025_Sci_3rd_Sub.pdf"],
-    "Ⅵ. 에너지 전환과 보존": ["2025_Sci_3rd_06.pdf", "2025_Sci_3rd_Sub.pdf"]
+    "Ⅳ. 자극과 반응": ["2025_Sci_3rd_04.pdf"],
+    "Ⅴ. 생식과 유전": ["2025_Sci_3rd_05.pdf"],
+    "Ⅵ. 에너지 전환과 보존": ["2025_Sci_3rd_06.pdf"]
 }
 SUBJECTS = {"과학": list(PDF_MAP.keys())}
 
@@ -40,8 +40,9 @@ COMMON_PROMPT = (
     "이미지를 출력거나 웹으로 연결할 때는 링크가 한 글자도 틀려선 안 됩니다. 오탈자 없이 출력하고, 초기 프롬프트에 포함된 링크 외에는 어떠한 링크도 제시하지 마세요.\n"
     "정보 제공을 목적으로 하지 말고, 학생에게 단계적 스캐폴딩을 제공하며 학생 스스로 깨닫도록 하는 것을 목적으로 하세요."
 )
-SCIENCE_PROMPT = (
-    "당신은 과학 과목 학습 지원을 담당합니다. \n"
+
+SCIENCE_04_PROMPT = (
+    "당신은 과학의 Ⅳ. 자극과 반응 단원 학습 지원을 담당합니다. \n"
     "눈의 구조와 기능을 그림으로 보여줄 때 다음 링크를 사용할 수 있습니다: https://i.imgur.com/BIFjdBj.png \n"
     "다음 이미지를 사용해 눈 문제를 낼 수 있습니다: https://i.imgur.com/KOOI7C1.png \n 이미지에는 눈의 단면에 A, B, C 세 부분이 지정되어 있으며, A는 홍채, B는 동공, C는 수정체입니다. 이 이미지를 활용한 문항을 제시할 수 있습니다. (예: 밝은 곳에서 어두운 곳을 갔을 때 B의 크기는 어떻게 변하는가?)\n"
     "귀의 구조와 기능을 그림으로 보여줄 때 다음 링크를 사용할 수 있습니다: https://i.imgur.com/uCPmN9l.png \n"
@@ -55,6 +56,14 @@ SCIENCE_PROMPT = (
     "뇌의 구조와 기능을 그림으로 보여줄 때 다음 링크를 사용할 수 있습니다: https://i.imgur.com/TAjDHDw.png \n"
     "다음 이미지를 사용해 뉴런의 종류 문제를 낼 수 있습니다: https://i.imgur.com/xvQfgIl.png \n 이미지에는 A, B, C 세 부분이 지정되어 있으며, A는 감각 뉴런, B는 연합 뉴런, C는 운동 뉴런입니다. 이 이미지를 활용한 문항을 제시할 수 있습니다.\n"
     "다음 이미지를 사용해 뇌와 척수 문제를 낼 수 있습니다: https://i.imgur.com/IRgZv7Q.png \n 이미지에는 뇌의 단면에 A~F 세 부분이 지정되어 있으며, A는 간뇌, B는 중간뇌, C는 연수, D는 대뇌, E는 소뇌, F는 척수입니다. 이 이미지를 활용한 문항을 제시할 수 있습니다. (예: 어두운 곳에 들어가면 동공이 커지는 반응의 중추는 무엇인지 기호와 이름을 써 보자.)\n"
+)
+
+SCIENCE_05_PROMPT = (
+    "당신은 과학의 Ⅴ. 생식과 유전 단원 학습 지원을 담당합니다. \n"
+)
+
+SCIENCE_06_PROMPT = (
+    "당신은 과학의 Ⅵ. 에너지 전환과 보존 단원 학습 지원을 담당합니다. \n"
 )
 
 # ===== Helpers =====
@@ -172,6 +181,14 @@ def chatbot_tab(subject, topic):
         st.session_state[load_key] = False
     msgs = st.session_state[key]
 
+    # Select the appropriate science prompt for this unit
+    science_prompts = {
+        "Ⅳ. 자극과 반응": SCIENCE_04_PROMPT,
+        "Ⅴ. 생식과 유전": SCIENCE_05_PROMPT,
+        "Ⅵ. 에너지 전환과 보존": SCIENCE_06_PROMPT
+    }
+    selected_science_prompt = science_prompts.get(topic, "")
+
     # 2) 기존 메시지 렌더링
     for msg in msgs:
         if msg["role"] == "user":
@@ -219,7 +236,7 @@ def chatbot_tab(subject, topic):
 
             system_msgs = [
                 {"role": "system", "content": COMMON_PROMPT},
-                {"role": "system", "content": SCIENCE_PROMPT},
+                {"role": "system", "content": selected_science_prompt},
                 {"role": "system", "content": f"관련된 교과서 내용입니다:\n\n{ctx}"}
             ]
 
