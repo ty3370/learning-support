@@ -74,6 +74,22 @@ SCIENCE_06_PROMPT = (
     "당신은 과학의 Ⅵ. 에너지 전환과 보존 단원 학습 지원을 담당합니다. \n"
 )
 
+def summarize_chunks(chunks, science_prompt):
+    summaries = []
+    for chunk in chunks:
+        resp = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": COMMON_PROMPT},
+                {"role": "system", "content": science_prompt},                   # ← 키워드 포함된 프롬프트
+                {"role": "system",
+                 "content": "아래 텍스트를 중3 수준으로 간결히 요약해 주세요."},
+                {"role": "user",   "content": chunk}
+            ]
+        )
+        summaries.append(resp.choices[0].message.content)
+    return "\n\n".join(summaries)
+
 # ===== Helpers =====
 def clean_inline_latex(text):
     text = re.sub(r",\s*\\text\{(.*?)\}", r" \1", text)
@@ -238,19 +254,19 @@ def chatbot_tab(subject, topic):
                      for fn in PDF_MAP[topic]]
             full = "\n\n".join(texts)
 
-            # 1️⃣ 한번만: 전체 요약 + embedding 캐시
+            # 한번만: 전체 요약 + embedding 캐시
             sum_key = f"sum_{subject}_{topic}".replace(" ", "_")
             if sum_key not in st.session_state:
                 chunks = chunk_text(full)
                 embs = embed_texts(chunks)
-                overall_summary = summarize_chunks(chunks)
+                overall_summary = summarize_chunks(chunks, selected_science_prompt)
                 st.session_state[sum_key] = (overall_summary, chunks, embs)
             overall_summary, chunks, embs = st.session_state[sum_key]
 
-            # 2️⃣ 질문마다: RAG로 연관 청크 검색
+            # 질문마다: RAG로 연관 청크 검색
             relevant = get_relevant_chunks(q, chunks, embs)
 
-            # 3️⃣ 시스템 메시지 구성: 공통→단원프롬프트→전체요약→연관청크
+            # 시스템 메시지 구성: 공통→단원프롬프트→전체요약→연관청크
             system_msgs = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_science_prompt},
