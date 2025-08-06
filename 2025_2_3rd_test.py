@@ -213,6 +213,31 @@ def save_chat(subject, topic, chat):
     except Exception as e:
         st.error(f"DB 오류: {e}")
 
+# Spinner 아이콘 정의
+
+def show_stage(message):
+    st.markdown(f"""
+    <div style='display: flex; align-items: center; font-size: 18px;'>
+        <div class="loader" style="
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 16px;
+            height: 16px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        "></div>
+        <div>{message}</div>
+    </div>
+
+    <style>
+    @keyframes spin {{
+        0% {{ transform: rotate(0deg); }}
+        100% {{ transform: rotate(360deg); }}
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
 # Chat UI
 
 def chatbot_tab(subject, topic):
@@ -268,10 +293,12 @@ def chatbot_tab(subject, topic):
         q = st.session_state.pop(input_key, "")
         if q:
 
-            spinner = st.empty()
+            stage = st.empty()
 
             # PDF 전체 텍스트 읽기
-            spinner.markdown("교과서 검색 중...")
+            stage.empty()
+            stage = st.empty()
+            show_stage("교과서 검색 중...")
             time.sleep(0.5)
             texts = [extract_text_from_pdf(os.path.join(BASE_DIR, fn))
                      for fn in PDF_MAP[topic]]
@@ -298,7 +325,9 @@ def chatbot_tab(subject, topic):
 #            chunks, embs = st.session_state['chunks_embs']
 
             # 질문마다: RAG로 연관 청크 검색
-            spinner.markdown("내용 분석 중...")
+            stage.empty()
+            stage = st.empty()
+            show_stage("내용 분석 중...")
             time.sleep(0.5)
             chunks = chunk_text(full)
             embs   = embed_texts(chunks)
@@ -309,7 +338,9 @@ def chatbot_tab(subject, topic):
             # 2) 질문 시: 상위 5개 청크만 가져와 답변 생성
             relevant = relevant[:5]
 
-            spinner.markdown("답변 생성 중...")
+            stage.empty()
+            stage = st.empty()
+            show_stage("답변 생성 중...")
             time.sleep(0.5)
             system_messages = [
                 {"role": "system", "content": COMMON_PROMPT},
@@ -337,6 +368,7 @@ def chatbot_tab(subject, topic):
             ans = resp.choices[0].message.content
 #            rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
 #            ans = rag_info + ans
+            stage.empty()
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
             msgs.extend([
                 {"role": "user", "content": q, "timestamp": ts},
