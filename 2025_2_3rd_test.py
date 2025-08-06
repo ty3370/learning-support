@@ -303,7 +303,7 @@ def chatbot_tab(subject, topic):
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_science_prompt},
                 {"role": "system",
-                 "content": "질문과 관련된 청크만 참고하여, 학생 답변 수준에 맞게 설명해 주세요:\n\n"
+                 "content": "아래 청크들은 교과서에서 발췌한 내용입니다. 질문과 관련된 청크만 참고해 답변하세요. 답변시 교과서의 표현을 철저하게 반영하세요:\n\n"
                             + "\n\n".join(relevant)},
                 {"role": "user",   "content": q}
             ]
