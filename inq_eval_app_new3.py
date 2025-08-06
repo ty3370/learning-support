@@ -75,7 +75,7 @@ def fetch_chat_v3(number, name, code, subject, topic):
         return None
 
 # ===== 메인 UI =====
-st.title("📚 학생 AI 대화 이력 조회 (qna_unique_v3 기반)")
+st.title("학생 AI 대화 이력 조회")
 
 # ===== 비밀번호 확인 =====
 password = st.text_input("비밀번호", type="password")
@@ -83,72 +83,80 @@ if password != st.secrets["PASSWORD"]:
     st.stop()
 
 # ===== 과목/단원 선택 =====
-subject = st.selectbox("과목을 선택하세요", ["과학"])
-topic = st.selectbox("대단원을 선택하세요", [
-    "Ⅳ. 자극과 반응", "Ⅴ. 생식과 유전", "Ⅵ. 에너지 전환과 보존"
-])
-if not topic:
-    st.stop()
+TOPIC_MAP = {
+    "과학": ["Ⅳ. 자극과 반응", "Ⅴ. 생식과 유전", "Ⅵ. 에너지 전환과 보존"],
+    # "기술": ["Ⅰ. 기술과 발명", "Ⅱ. 자원과 에너지"]
+}
 
-# ===== 학생 목록 조회 =====
-students = fetch_students_v3(subject, topic)
-if not students:
-    st.warning("해당 단원에 대해 대화한 학생이 없습니다.")
-    st.stop()
+subject_options = ["과목을 선택하세요"] + list(TOPIC_MAP.keys())
+subject = st.selectbox("과목 선택", subject_options)
 
-student_options = [f"{n} ({nm}) / 코드: {c}" for n, nm, c in students]
-selected = st.selectbox("학생 선택", student_options)
-idx = student_options.index(selected)
-number, name, code = students[idx]
+if subject != "과목을 선택하세요":
+    topic_options = ["대단원을 선택하세요"] + TOPIC_MAP.get(subject, [])
+    topic = st.selectbox("대단원 선택", topic_options)
 
-# ===== 대화 불러오기 =====
-chat_data = fetch_chat_v3(number, name, code, subject, topic)
-if not chat_data:
-    st.warning("대화 기록이 없습니다.")
-    st.stop()
+    if topic != "대단원을 선택하세요":
+        # ===== 학생 목록 조회 =====
+        students = fetch_students_v3(subject, topic)
 
-# ===== 대화 출력 =====
-try:
-    chat = json.loads(chat_data)
-    st.write("### 💬 대화 내용 (LaTeX 포함)")
-    chat_table = []
+        if students:
+            student_options = [f"{n} ({nm}) / 코드: {c}" for n, nm, c in students]
+            selected = st.selectbox("학생 선택", ["학생을 선택하세요"] + student_options)
 
-    for msg in chat:
-        role = "**You:**" if msg["role"] == "user" else "**과학 도우미:**"
-        ts = f" ({msg['timestamp']})" if "timestamp" in msg else ""
-        content = msg["content"]
+            if selected != "학생을 선택하세요":
+                idx = student_options.index(selected)
+                number, name, code = students[idx]
 
-        parts = re.split(r"(@@@@@.*?@@@@@)", content, flags=re.DOTALL)
-        cleaned_parts = []
+                # ===== 대화 불러오기 =====
+                chat_data = fetch_chat_v3(number, name, code, subject, topic)
+                if not chat_data:
+                    st.warning("대화 기록이 없습니다.")
+                    st.stop()
 
-        for part in parts:
-            if part.startswith("@@@@@") and part.endswith("@@@@@"):
-                st.latex(part[5:-5].strip())
-                cleaned_parts.append(part[5:-5].strip())
-            else:
-                txt = clean_inline_latex(part.strip())
-                if txt:
-                    lines = txt.splitlines()
-                    for line in lines:
-                        imgs = re.findall(r"(https?://\S+\.(?:png|jpg|jpeg))", line)
-                        for img in imgs:
-                            st.image(img)
-                            line = line.replace(img, "")
-                        if line.strip():
-                            st.write(f"{role} {line.strip()}{ts}")
-                            role = ""  # 한 번만 출력
-                    cleaned_parts.append(txt)
+                # ===== 대화 출력 =====
+                try:
+                    chat = json.loads(chat_data)
+                    st.write("### 대화 내용")
+                    chat_table = []
 
-        chat_table.append({
-            "말한 사람": "학생" if msg["role"] == "user" else "과학 도우미",
-            "내용": " ".join(cleaned_parts),
-            "시간": msg.get("timestamp", "")
-        })
+                    for msg in chat:
+                        role = "학생" if msg["role"] == "user" else "과학 도우미"
+                        ts = f" ({msg['timestamp']})" if "timestamp" in msg else ""
+                        content = msg["content"]
 
-    # ===== 복사용 표 =====
-    st.write("### 복사용 표")
-    df = pd.DataFrame(chat_table)
-    st.markdown(df.to_html(index=False), unsafe_allow_html=True)
+                        parts = re.split(r"(@@@@@.*?@@@@@)", content, flags=re.DOTALL)
+                        cleaned_parts = []
 
-except json.JSONDecodeError:
-    st.error("대화 JSON 형식 오류입니다.")
+                        for part in parts:
+                            if part.startswith("@@@@@") and part.endswith("@@@@@"):
+                                st.latex(part[5:-5].strip())
+                                cleaned_parts.append(part[5:-5].strip())
+                            else:
+                                txt = clean_inline_latex(part.strip())
+                                if txt:
+                                    lines = txt.splitlines()
+                                    for line in lines:
+                                        imgs = re.findall(r"(https?://\S+\.(?:png|jpg|jpeg))", line)
+                                        for img in imgs:
+                                            st.image(img)
+                                            line = line.replace(img, "")
+                                        if line.strip():
+                                            st.write(f"**{role}:** {line.strip()}{ts}")
+                                            role = ""  # 한 번만 출력
+                                    cleaned_parts.append(txt)
+
+                        chat_table.append({
+                            "말한 사람": "학생" if msg["role"] == "user" else "과학 도우미",
+                            "내용": " ".join(cleaned_parts),
+                            "시간": msg.get("timestamp", "")
+                        })
+
+                    # ===== 복사용 표 =====
+                    st.write("### 복사용 표")
+                    df = pd.DataFrame(chat_table)
+                    st.markdown(df.to_html(index=False), unsafe_allow_html=True)
+
+                except json.JSONDecodeError:
+                    st.error("대화 JSON 형식 오류입니다.")
+        else:
+            st.warning("해당 단원에 대해 대화한 학생이 없습니다.")
