@@ -36,7 +36,7 @@ def connect_to_db():
         charset='utf8mb4'
     )
 
-# ===== 학생 목록 조회 =====
+# ===== 데이터 조회 =====
 def fetch_students_v3(subject, topic):
     try:
         db = connect_to_db()
@@ -55,7 +55,6 @@ def fetch_students_v3(subject, topic):
         st.error(f"DB 오류: {e}")
         return []
 
-# ===== 대화 기록 조회 =====
 def fetch_chat_v3(number, name, code, subject, topic):
     try:
         db = connect_to_db()
@@ -74,91 +73,113 @@ def fetch_chat_v3(number, name, code, subject, topic):
         st.error(f"DB 오류: {e}")
         return None
 
-# ===== 메인 UI =====
-st.title("학생 AI 대화 이력 조회")
-
-# ===== 비밀번호 확인 =====
-password = st.text_input("비밀번호", type="password")
-if password != st.secrets["PASSWORD"]:
-    st.stop()
+# ===== 삭제 함수 =====
+def delete_chat_v3(number, name, code, subject, topic):
+    try:
+        db = connect_to_db()
+        cursor = db.cursor()
+        sql = """
+        DELETE FROM qna_unique_v3
+        WHERE number = %s AND name = %s AND code = %s
+          AND subject = %s AND topic = %s
+        """
+        cursor.execute(sql, (number, name, code, subject, topic))
+        db.commit()
+        cursor.close(); db.close()
+        return True
+    except pymysql.MySQLError as e:
+        st.error(f"삭제 오류: {e}")
+        return False
 
 # ===== 과목/단원 선택 =====
 TOPIC_MAP = {
-    "과학": ["Ⅳ. 자극과 반응", "Ⅴ. 생식과 유전", "Ⅵ. 에너지 전환과 보존"],
-    # "기술": ["Ⅰ. 기술과 발명", "Ⅱ. 자원과 에너지"]
+    "과학": ["Ⅳ. 자극과 반응", "Ⅴ. 생식과 유전", "Ⅵ. 에너지 전환과 보존"]
 }
 
-subject_options = ["과목을 선택하세요"] + list(TOPIC_MAP.keys())
-subject = st.selectbox("과목 선택", subject_options)
+subject = st.selectbox("과목 선택", ["과목을 선택하세요"] + list(TOPIC_MAP.keys()))
+if subject == "과목을 선택하세요":
+    st.stop()
 
-if subject != "과목을 선택하세요":
-    topic_options = ["대단원을 선택하세요"] + TOPIC_MAP.get(subject, [])
-    topic = st.selectbox("대단원 선택", topic_options)
+topic = st.selectbox("대단원 선택", ["대단원을 선택하세요"] + TOPIC_MAP.get(subject, []))
+if topic == "대단원을 선택하세요":
+    st.stop()
 
-    if topic != "대단원을 선택하세요":
-        # ===== 학생 목록 조회 =====
-        students = fetch_students_v3(subject, topic)
+# ===== 학생 목록 조회 =====
+students = fetch_students_v3(subject, topic)
+if not students:
+    st.warning("해당 단원에 대해 대화한 학생이 없습니다.")
+    st.stop()
 
-        if students:
-            student_options = [f"{n} ({nm}) / 코드: {c}" for n, nm, c in students]
-            selected = st.selectbox("학생 선택", student_options)
-            idx = student_options.index(selected)
-            number, name, code = students[idx]
+student_options = [f"{n} ({nm}) / 코드: {c}" for n, nm, c in students]
+selected = st.selectbox("학생 선택", student_options)
+idx = student_options.index(selected)
+number, name, code = students[idx]
 
-            if selected != "학생을 선택하세요":
-                idx = student_options.index(selected)
-                number, name, code = students[idx]
+# ===== 대화 불러오기 =====
+chat_data = fetch_chat_v3(number, name, code, subject, topic)
+if not chat_data:
+    st.warning("대화 기록이 없습니다.")
+    st.stop()
 
-                # ===== 대화 불러오기 =====
-                chat_data = fetch_chat_v3(number, name, code, subject, topic)
-                if not chat_data:
-                    st.warning("대화 기록이 없습니다.")
-                    st.stop()
+# ===== 대화 출력 =====
+try:
+    chat = json.loads(chat_data)
+    st.write("### 대화 내용")
+    chat_table = []
 
-                # ===== 대화 출력 =====
-                try:
-                    chat = json.loads(chat_data)
-                    st.write("### 대화 내용")
-                    chat_table = []
+    for msg in chat:
+        role = "**You:**" if msg["role"] == "user" else "**과학 도우미:**"
+        ts = f" ({msg['timestamp']})" if "timestamp" in msg else ""
+        content = msg["content"]
 
-                    for msg in chat:
-                        role = "학생" if msg["role"] == "user" else "과학 도우미"
-                        ts = f" ({msg['timestamp']})" if "timestamp" in msg else ""
-                        content = msg["content"]
+        parts = re.split(r"(@@@@@.*?@@@@@)", content, flags=re.DOTALL)
+        cleaned_parts = []
 
-                        parts = re.split(r"(@@@@@.*?@@@@@)", content, flags=re.DOTALL)
-                        cleaned_parts = []
+        for part in parts:
+            if part.startswith("@@@@@") and part.endswith("@@@@@"):
+                st.latex(part[5:-5].strip())
+                cleaned_parts.append(part[5:-5].strip())
+            else:
+                txt = clean_inline_latex(part.strip())
+                if txt:
+                    lines = txt.splitlines()
+                    for line in lines:
+                        imgs = re.findall(r"(https?://\S+\.(?:png|jpg|jpeg))", line)
+                        for img in imgs:
+                            st.image(img)
+                            line = line.replace(img, "")
+                        if line.strip():
+                            st.write(f"{role} {line.strip()}{ts}")
+                            role = ""  # 한 번만 출력
+                    cleaned_parts.append(txt)
 
-                        for part in parts:
-                            if part.startswith("@@@@@") and part.endswith("@@@@@"):
-                                st.latex(part[5:-5].strip())
-                                cleaned_parts.append(part[5:-5].strip())
-                            else:
-                                txt = clean_inline_latex(part.strip())
-                                if txt:
-                                    lines = txt.splitlines()
-                                    for line in lines:
-                                        imgs = re.findall(r"(https?://\S+\.(?:png|jpg|jpeg))", line)
-                                        for img in imgs:
-                                            st.image(img)
-                                            line = line.replace(img, "")
-                                        if line.strip():
-                                            st.write(f"**{role}:** {line.strip()}{ts}")
-                                            role = ""  # 한 번만 출력
-                                    cleaned_parts.append(txt)
+        chat_table.append({
+            "말한 사람": "학생" if msg["role"] == "user" else "과학 도우미",
+            "내용": " ".join(cleaned_parts),
+            "시간": msg.get("timestamp", "")
+        })
 
-                        chat_table.append({
-                            "말한 사람": "학생" if msg["role"] == "user" else "과학 도우미",
-                            "내용": " ".join(cleaned_parts),
-                            "시간": msg.get("timestamp", "")
-                        })
+    # ===== 복사용 표 =====
+    st.write("### 복사용 표")
+    df = pd.DataFrame(chat_table)
+    st.markdown(df.to_html(index=False), unsafe_allow_html=True)
 
-                    # ===== 복사용 표 =====
-                    st.write("### 복사용 표")
-                    df = pd.DataFrame(chat_table)
-                    st.markdown(df.to_html(index=False), unsafe_allow_html=True)
+except json.JSONDecodeError:
+    st.error("대화 JSON 형식 오류입니다.")
+    st.stop()
 
-                except json.JSONDecodeError:
-                    st.error("대화 JSON 형식 오류입니다.")
+# ===== 삭제 기능 =====
+if "delete_confirm" not in st.session_state:
+    st.session_state.delete_confirm = False
+
+if not st.session_state.delete_confirm:
+    if st.button("❌ 이 학생의 대화 기록 삭제하기"):
+        st.session_state.delete_confirm = True
+        st.warning("정말 삭제하시겠습니까? 아래 버튼을 눌러 확정하세요.")
+else:
+    if st.button("✅ 진짜로 삭제하기"):
+        if delete_chat_v3(number, name, code, subject, topic):
+            st.success("삭제 완료. 페이지를 새로고침하세요.")
+            st.stop()
         else:
-            st.warning("해당 단원에 대해 대화한 학생이 없습니다.")
+            st.error("삭제 실패")
