@@ -266,7 +266,11 @@ def chatbot_tab(subject, topic):
     if st.session_state[load_key]:
         q = st.session_state.pop(input_key, "")
         if q:
+
+            spinner = st.empty()
+
             # PDF 전체 텍스트 읽기
+            spinner.markdown("교과서 검색 중...")
             texts = [extract_text_from_pdf(os.path.join(BASE_DIR, fn))
                      for fn in PDF_MAP[topic]]
             full = "\n\n".join(texts)
@@ -292,6 +296,7 @@ def chatbot_tab(subject, topic):
 #            chunks, embs = st.session_state['chunks_embs']
 
             # 질문마다: RAG로 연관 청크 검색
+            spinner.markdown("내용 분석 중...")
             chunks = chunk_text(full)
             embs   = embed_texts(chunks)
             relevant = get_relevant_chunks(q, chunks, embs, top_k=3)
@@ -301,6 +306,7 @@ def chatbot_tab(subject, topic):
             # 2) 질문 시: 상위 5개 청크만 가져와 답변 생성
             relevant = relevant[:5]
 
+            spinner.markdown("답변 생성 중...")
             system_messages = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_science_prompt},
@@ -323,11 +329,10 @@ def chatbot_tab(subject, topic):
                 {"role": "user", "content": q}
             ]
 
-            with st.spinner("답변 생성 중…"):
-                resp = client.chat.completions.create(model=MODEL, messages=prompt)
-                ans = resp.choices[0].message.content
-#                rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
-#                ans = rag_info + ans
+            resp = client.chat.completions.create(model=MODEL, messages=prompt)
+            ans = resp.choices[0].message.content
+#            rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
+#            ans = rag_info + ans
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
             msgs.extend([
                 {"role": "user", "content": q, "timestamp": ts},
