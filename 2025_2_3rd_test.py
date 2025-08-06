@@ -91,19 +91,10 @@ SCIENCE_06_PROMPT = (
     "당신은 과학의 Ⅵ. 에너지 전환과 보존 단원 학습 지원을 담당합니다. \n"
 )
 
-def summarize_chunks(chunks, science_prompt):
+def summarize_chunks(chunks, science_prompt, max_chunks=5):
     summaries = []
-    for chunk in chunks:
-        resp = client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": COMMON_PROMPT},
-                {"role": "system", "content": science_prompt},
-                {"role": "system",
-                 "content": "아래 텍스트를 앞서 언급된 키워드 중심으로 정리해 주세요."},
-                {"role": "user",   "content": chunk}
-            ]
-        )
+    for chunk in chunks[:max_chunks]:
+        resp = client.chat.completions.create(…)
         summaries.append(resp.choices[0].message.content)
     return "\n\n".join(summaries)
 
@@ -282,35 +273,31 @@ def chatbot_tab(subject, topic):
             # 한번만: 전체 요약 + embedding 캐시
             full_hash = hashlib.md5(full.encode("utf-8")).hexdigest()
             sum_key = f"sum_{subject}_{topic}".replace(" ", "_")
-            if sum_key not in st.session_state:
-                chunks = chunk_text(full)
-                embs   = embed_texts(chunks)
-                overall_summary = summarize_chunks(chunks, selected_science_prompt)
-                st.session_state[sum_key] = (overall_summary, chunks, embs)
-
-            overall_summary, chunks, embs = st.session_state[sum_key]
-            st.write("🧩 청크 개수:", len(chunks))
-
 
             # 질문마다: RAG로 연관 청크 검색
-            relevant = get_relevant_chunks(q, chunks, embs)
+            relevant = get_relevant_chunks(q, chunks, embs, top_k=3)
             st.write("📎 관련 청크 개수:", len(relevant))
             st.write("🔍 청크 미리보기:", relevant)
 
-            # 시스템 메시지 구성: 공통→단원프롬프트→전체요약→연관청크
-            system_msgs = [
+            # 1) 청크·임베딩 캐시
+            if 'chunks_embs' not in st.session_state:
+                chunks = chunk_text(full)
+                embs   = embed_texts(chunks)
+                st.session_state['chunks_embs'] = (chunks, embs)
+        
+            chunks, embs = st.session_state['chunks_embs']
+            # 2) 질문 시: 상위 3개 청크만 가져와 답변 생성
+            relevant = get_relevant_chunks(q, chunks, embs, top_k=3)
+            prompt = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_science_prompt},
-                {"role": "system", "content": f"단원 요약:\n{overall_summary}"},
-                {"role": "system", "content": 
-                    f"질문과 연관된 내용:\n\n{'\n\n'.join(relevant)}"}
+                {"role": "system",
+                 "content": "질문과 관련된 청크만 참고하여, 학생 답변 수준에 맞게 설명해 주세요:\n\n"
+                            + "\n\n".join(relevant)},
+                {"role": "user",   "content": q}
             ]
-
             with st.spinner("답변 생성 중…"):
-                resp = client.chat.completions.create(
-                    model=MODEL,
-                    messages=system_msgs + msgs + [{"role": "user", "content": q}]
-                )
+                resp = client.chat.completions.create(model=MODEL, messages=prompt)
                 ans = resp.choices[0].message.content
                 rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
                 ans = rag_info + ans
