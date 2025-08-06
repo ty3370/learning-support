@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import fitz  # PyMuPDF
 import numpy as np
 import os
+import hashlib
 
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -147,27 +148,14 @@ def embed_texts(texts):
 def get_relevant_chunks(question, chunks, embeddings, top_k=3):
     if not chunks:
         return []
-
-    # 1) 질문 임베딩
     q_emb = np.array(
         client.embeddings.create(
             model="text-embedding-3-large", input=[question]
         ).data[0].embedding
     )
-
-    # 2) 각 청크와의 코사인 유사도 계산
-    sims = [
-        np.dot(q_emb, emb) / (np.linalg.norm(q_emb) * np.linalg.norm(emb))
-        for emb in embeddings
-    ]
-
-    # 3) (유사도, 청크) 쌍으로 묶고 내림차순 정렬
-    scored = sorted(zip(sims, chunks), key=lambda x: x[0], reverse=True)
-
-    # 4) 가장 유사도 높은 top_k개 청크만 반환
-    top_chunks = [chunk for _, chunk in scored[:top_k]]
-    return top_chunks
-
+    sims = [np.dot(q_emb, emb)/(np.linalg.norm(q_emb)*np.linalg.norm(emb)) for emb in embeddings]
+    idx = np.argsort(sims)[-top_k:][::-1]
+    return [chunks[i] for i in idx]
 
 # DB
 
@@ -292,14 +280,17 @@ def chatbot_tab(subject, topic):
                 st.write(path, "존재 여부:", os.path.exists(path))
 
             # 한번만: 전체 요약 + embedding 캐시
+            full_hash = hashlib.md5(full.encode("utf-8")).hexdigest()
             sum_key = f"sum_{subject}_{topic}".replace(" ", "_")
             if sum_key not in st.session_state:
                 chunks = chunk_text(full)
-                embs = embed_texts(chunks)
+                embs   = embed_texts(chunks)
                 overall_summary = summarize_chunks(chunks, selected_science_prompt)
                 st.session_state[sum_key] = (overall_summary, chunks, embs)
-                st.write("🧩 청크 개수:", len(chunks))
+
             overall_summary, chunks, embs = st.session_state[sum_key]
+            st.write("🧩 청크 개수:", len(chunks))
+
 
             # 질문마다: RAG로 연관 청크 검색
             relevant = get_relevant_chunks(q, chunks, embs)
