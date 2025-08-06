@@ -160,7 +160,7 @@ try:
                     cleaned_parts.append(txt)
 
         chat_table.append({
-            "말한 사람": "학생" if msg["role"] == "user" else "과학 도우미",
+            "말한 사람": name if msg["role"] == "user" else "과학 도우미",
             "내용": " ".join(cleaned_parts),
             "시간": msg.get("timestamp", "")
         })
