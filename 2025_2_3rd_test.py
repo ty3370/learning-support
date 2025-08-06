@@ -269,7 +269,9 @@ def chatbot_tab(subject, topic):
             texts = [extract_text_from_pdf(os.path.join(BASE_DIR, fn))
                      for fn in PDF_MAP[topic]]
             full = "\n\n".join(texts)
-            st.write("📄 전체 텍스트 길이:", len(full))
+            st.write("🧪 사용 중인 파일:", PDF_MAP[topic])
+            st.write("📄 full 길이:", len(full))
+            st.write("📄 내용 일부:", full[:300])
 
             # 한번만: 전체 요약 + embedding 캐시
             sum_key = f"sum_{subject}_{topic}".replace(" ", "_")
