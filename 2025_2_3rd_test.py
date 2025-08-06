@@ -285,6 +285,7 @@ def chatbot_tab(subject, topic):
                 embs = embed_texts(chunks)
                 overall_summary = summarize_chunks(chunks, selected_science_prompt)
                 st.session_state[sum_key] = (overall_summary, chunks, embs)
+                st.write("🧩 청크 개수:", len(chunks))
             overall_summary, chunks, embs = st.session_state[sum_key]
 
             # 질문마다: RAG로 연관 청크 검색
