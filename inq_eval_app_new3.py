@@ -91,6 +91,12 @@ def delete_chat_v3(number, name, code, subject, topic):
         st.error(f"삭제 오류: {e}")
         return False
 
+# ===== 기본 UI =====
+st.title("학생 AI 대화 이력 조회")
+password = st.text_input("비밀번호를 입력하세요", type="password")
+if password != st.secrets["PASSWORD"]:
+    st.stop()
+
 # ===== 과목/단원 선택 =====
 TOPIC_MAP = {
     "과학": ["Ⅳ. 자극과 반응", "Ⅴ. 생식과 유전", "Ⅵ. 에너지 전환과 보존"]
