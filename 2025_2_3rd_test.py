@@ -140,7 +140,7 @@ def embed_texts(texts):
     if not texts:
         return []
     res = client.embeddings.create(
-        model="text-embedding-3-large",
+        model="text-embedding-3-small",
         input=texts
     )
     return [np.array(d.embedding) for d in res.data]
@@ -150,7 +150,7 @@ def get_relevant_chunks(question, chunks, embeddings, top_k=3):
         return []
     q_emb = np.array(
         client.embeddings.create(
-            model="text-embedding-3-large", input=[question]
+            model="text-embedding-3-small", input=[question]
         ).data[0].embedding
     )
     sims = [np.dot(q_emb, emb)/(np.linalg.norm(q_emb)*np.linalg.norm(emb)) for emb in embeddings]
