@@ -148,21 +148,25 @@ def get_relevant_chunks(question, chunks, embeddings, top_k=3):
     if not chunks:
         return []
 
+    # 1) 질문 임베딩
     q_emb = np.array(
         client.embeddings.create(
             model="text-embedding-3-large", input=[question]
         ).data[0].embedding
     )
 
-    sims = [np.dot(q_emb, emb)/(np.linalg.norm(q_emb)*np.linalg.norm(emb)) for emb in embeddings]
-    idx = np.argsort(sims)[-top_k:][::-1]
-    
-    selected_chunks = [chunks[i] for i in idx]
-    
-    # 빈 문자열 제거
-    non_empty = [c for c in selected_chunks if c.strip() != ""]
-    
-    return non_empty
+    # 2) 각 청크와의 코사인 유사도 계산
+    sims = [
+        np.dot(q_emb, emb) / (np.linalg.norm(q_emb) * np.linalg.norm(emb))
+        for emb in embeddings
+    ]
+
+    # 3) (유사도, 청크) 쌍으로 묶고 내림차순 정렬
+    scored = sorted(zip(sims, chunks), key=lambda x: x[0], reverse=True)
+
+    # 4) 가장 유사도 높은 top_k개 청크만 반환
+    top_chunks = [chunk for _, chunk in scored[:top_k]]
+    return top_chunks
 
 
 # DB
