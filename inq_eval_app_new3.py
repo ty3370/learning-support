@@ -101,7 +101,9 @@ if subject != "과목을 선택하세요":
 
         if students:
             student_options = [f"{n} ({nm}) / 코드: {c}" for n, nm, c in students]
-            selected = st.selectbox("학생 선택", ["학생을 선택하세요"] + student_options)
+            selected = st.selectbox("학생 선택", student_options)
+            idx = student_options.index(selected)
+            number, name, code = students[idx]
 
             if selected != "학생을 선택하세요":
                 idx = student_options.index(selected)
