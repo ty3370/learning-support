@@ -9,6 +9,7 @@ import fitz  # PyMuPDF
 import numpy as np
 import os
 import hashlib
+import time
 
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -271,6 +272,7 @@ def chatbot_tab(subject, topic):
 
             # PDF 전체 텍스트 읽기
             spinner.markdown("교과서 검색 중...")
+            time.sleep(0.5)
             texts = [extract_text_from_pdf(os.path.join(BASE_DIR, fn))
                      for fn in PDF_MAP[topic]]
             full = "\n\n".join(texts)
@@ -297,6 +299,7 @@ def chatbot_tab(subject, topic):
 
             # 질문마다: RAG로 연관 청크 검색
             spinner.markdown("내용 분석 중...")
+            time.sleep(0.5)
             chunks = chunk_text(full)
             embs   = embed_texts(chunks)
             relevant = get_relevant_chunks(q, chunks, embs, top_k=3)
@@ -307,6 +310,7 @@ def chatbot_tab(subject, topic):
             relevant = relevant[:5]
 
             spinner.markdown("답변 생성 중...")
+            time.sleep(0.5)
             system_messages = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_science_prompt},
