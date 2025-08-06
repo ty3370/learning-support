@@ -127,10 +127,22 @@ def clean_inline_latex(text):
 
 # RAG pipelines
 def extract_text_from_pdf(path):
+    import os
+    import fitz
+
+    print(f"📂 PDF 경로 확인: {path}")
     if not os.path.exists(path):
+        print("❌ 파일이 존재하지 않습니다.")
         return ""
+
     doc = fitz.open(path)
-    return "\n\n".join(page.get_text() for page in doc)
+    texts = []
+    for i, page in enumerate(doc):
+        txt = page.get_text()
+        print(f"📄 페이지 {i+1} 텍스트 길이: {len(txt)}")
+        texts.append(txt)
+
+    return "\n\n".join(texts)
 
 def chunk_text(text, size=1000):
     return [text[i:i+size] for i in range(0, len(text), size)]
