@@ -12,7 +12,7 @@ import os
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MODEL = "gpt-4o"
-BASE_DIR = "/home/ubuntu/Textbook_2025"
+BASE_DIR = os.path.join(os.getcwd(), "Textbook_2025")
 PDF_MAP = {
     "Ⅳ. 자극과 반응": ["2025_Sci_3rd_04.pdf"],
     "Ⅴ. 생식과 유전": ["2025_Sci_3rd_05.pdf"],
@@ -269,6 +269,8 @@ def chatbot_tab(subject, topic):
             texts = [extract_text_from_pdf(os.path.join(BASE_DIR, fn))
                      for fn in PDF_MAP[topic]]
             full = "\n\n".join(texts)
+
+            # 디버깅용
             st.write("🧪 사용 중인 파일:", PDF_MAP[topic])
             st.write("📄 full 길이:", len(full))
             st.write("📄 내용 일부:", full[:300])
