@@ -186,7 +186,7 @@ if not delete_confirm:
     if delete_area.button("❌ 이 학생의 대화 기록 삭제하기"):
         # 상태 변경 후 rerun → 다음 렌더링에서 확인 버튼 보이게
         st.session_state.delete_confirm = True
-        st.experimental_rerun()
+        st.rerun()
 else:
     st.warning("정말 삭제하시겠습니까? 아래 버튼을 눌러 확정하세요.")
     if delete_area.button("✅ 진짜로 삭제하기"):
