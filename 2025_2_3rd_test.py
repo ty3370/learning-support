@@ -296,8 +296,9 @@ def chatbot_tab(subject, topic):
                     model=MODEL,
                     messages=system_msgs + msgs + [{"role": "user", "content": q}]
                 )
-            rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
-            ans = rag_info + ans
+                ans = resp.choices[0].message.content
+                rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
+                ans = rag_info + ans
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
             msgs.extend([
                 {"role": "user", "content": q, "timestamp": ts},
