@@ -282,13 +282,17 @@ def chatbot_tab(subject, topic):
             # 질문마다: RAG로 연관 청크 검색
             relevant = get_relevant_chunks(q, chunks, embs)
 
+            # RAG로 찾은 청크 출력
+            with st.expander("🔍 질문과 연관된 교과서 내용 보기"):
+                st.write('\n\n'.join(relevant))
+
             # 시스템 메시지 구성: 공통→단원프롬프트→전체요약→연관청크
             system_msgs = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_science_prompt},
                 {"role": "system", "content": f"단원 요약:\n{overall_summary}"},
                 {"role": "system", "content": 
-                    f"질문과 연관된 내용 ★이 부분은 반드시 원문 그대로 답변에 포함하세요★ :\n\n{'\n\n'.join(relevant)}"}
+                    f"질문과 연관된 내용:\n\n{'\n\n'.join(relevant)}"}
             ]
 
             with st.spinner("답변 생성 중…"):
