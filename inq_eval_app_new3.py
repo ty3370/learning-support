@@ -178,11 +178,14 @@ except json.JSONDecodeError:
 if "delete_confirm" not in st.session_state:
     st.session_state.delete_confirm = False
 
+delete_area = st.empty()
+
 if not st.session_state.delete_confirm:
-    if st.button("❌ 이 학생의 대화 기록 삭제하기"):
+    if delete_area.button("❌ 이 학생의 대화 기록 삭제하기"):
         st.session_state.delete_confirm = True
-        st.warning("정말 삭제하시겠습니까? 아래 버튼을 눌러 확정하세요.")
-else:
+
+if st.session_state.delete_confirm:
+    st.warning("정말 삭제하시겠습니까? 아래 버튼을 눌러 확정하세요.")
     if st.button("✅ 진짜로 삭제하기"):
         if delete_chat_v3(number, name, code, subject, topic):
             st.success("삭제 완료. 페이지를 새로고침하세요.")
