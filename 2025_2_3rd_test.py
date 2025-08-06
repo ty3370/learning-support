@@ -298,15 +298,31 @@ def chatbot_tab(subject, topic):
 #            st.write("📎 관련 청크 개수:", len(relevant))
 #            st.write("🔍 청크 미리보기:", relevant)
 
-            # 2) 질문 시: 상위 3개 청크만 가져와 답변 생성
-            prompt = [
+            # 2) 질문 시: 상위 5개 청크만 가져와 답변 생성
+            relevant = relevant[:5]
+
+            system_messages = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_science_prompt},
-                {"role": "system",
-                 "content": "아래 청크들은 교과서에서 발췌한 내용입니다. 질문과 관련된 청크만 참고해 답변하세요. 답변시 교과서의 표현을 철저하게 반영하세요:\n\n"
-                            + "\n\n".join(relevant)},
-                {"role": "user",   "content": q}
             ]
+
+            history = st.session_state.get("history", [])
+
+            rag_system_message = {
+                "role": "system",
+                "content": (
+                    "아래 청크들은 교과서에서 발췌한 내용입니다. "
+                    "질문과 관련된 청크만 참고해 답변하세요. "
+                    "답변시 교과서의 표현을 철저하게 반영하세요:\n\n"
+                    + "\n\n".join(relevant)
+                )
+            }
+
+            prompt = system_messages + history + [
+                rag_system_message,
+                {"role": "user", "content": q}
+            ]
+
             with st.spinner("답변 생성 중…"):
                 resp = client.chat.completions.create(model=MODEL, messages=prompt)
                 ans = resp.choices[0].message.content
