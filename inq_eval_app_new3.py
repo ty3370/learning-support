@@ -188,7 +188,7 @@ if not delete_confirm:
         st.session_state.delete_confirm = True
         st.rerun()
 else:
-    st.warning("정말 삭제하시겠습니까? 아래 버튼을 눌러 확정하세요.")
+    st.warning("정말 삭제하시겠습니까? 버튼을 눌러 확정하세요.")
     if delete_area.button("✅ 진짜로 삭제하기"):
         if delete_chat_v3(number, name, code, subject, topic):
             st.success("삭제 완료")
