@@ -290,6 +290,8 @@ def chatbot_tab(subject, topic):
 
             # 질문마다: RAG로 연관 청크 검색
             relevant = get_relevant_chunks(q, chunks, embs)
+            st.write("📎 관련 청크 개수:", len(relevant))
+            st.write("🔍 청크 미리보기:", relevant)
 
             # 시스템 메시지 구성: 공통→단원프롬프트→전체요약→연관청크
             system_msgs = [
