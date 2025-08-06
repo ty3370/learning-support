@@ -180,11 +180,14 @@ if "delete_confirm" not in st.session_state:
 
 delete_area = st.empty()
 
-if not st.session_state.delete_confirm:
-    if delete_area.button("❌ 이 학생의 대화 기록 삭제하기"):
-        st.session_state.delete_confirm = True
+delete_confirm = st.session_state.delete_confirm
 
-elif st.session_state.delete_confirm:
+if not delete_confirm:
+    if delete_area.button("❌ 이 학생의 대화 기록 삭제하기"):
+        # 다음 렌더링에서 조건을 바꾸기만 하고 종료
+        st.session_state.delete_confirm = True
+        st.experimental_rerun()
+else:
     st.warning("정말 삭제하시겠습니까? 아래 버튼을 눌러 확정하세요.")
     if delete_area.button("✅ 진짜로 삭제하기"):
         if delete_chat_v3(number, name, code, subject, topic):
