@@ -94,7 +94,16 @@ SCIENCE_06_PROMPT = (
 def summarize_chunks(chunks, science_prompt, max_chunks=5):
     summaries = []
     for chunk in chunks[:max_chunks]:
-        resp = client.chat.completions.create(…)
+        resp = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": COMMON_PROMPT},
+                {"role": "system", "content": science_prompt},
+                {"role": "system",
+                 "content": "아래 텍스트를 앞서 언급된 키워드 중심으로 정리해 주세요."},
+                {"role": "user",   "content": chunk}
+            ]
+        )
         summaries.append(resp.choices[0].message.content)
     return "\n\n".join(summaries)
 
