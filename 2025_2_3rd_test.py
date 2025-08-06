@@ -147,14 +147,23 @@ def embed_texts(texts):
 def get_relevant_chunks(question, chunks, embeddings, top_k=3):
     if not chunks:
         return []
+
     q_emb = np.array(
         client.embeddings.create(
             model="text-embedding-3-large", input=[question]
         ).data[0].embedding
     )
+
     sims = [np.dot(q_emb, emb)/(np.linalg.norm(q_emb)*np.linalg.norm(emb)) for emb in embeddings]
     idx = np.argsort(sims)[-top_k:][::-1]
-    return [chunks[i] for i in idx]
+    
+    selected_chunks = [chunks[i] for i in idx]
+    
+    # 빈 문자열 제거
+    non_empty = [c for c in selected_chunks if c.strip() != ""]
+    
+    return non_empty
+
 
 # DB
 
