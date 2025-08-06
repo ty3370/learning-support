@@ -282,9 +282,8 @@ def chatbot_tab(subject, topic):
             # 질문마다: RAG로 연관 청크 검색
             relevant = get_relevant_chunks(q, chunks, embs)
 
-            # RAG로 찾은 청크 출력
-            with st.expander("🔍 질문과 연관된 교과서 내용 보기"):
-                st.write('\n\n'.join(relevant))
+            # 세션 상태에 저장 (답변 후에도 유지되도록)
+            st.session_state['relevant_chunks'] = relevant
 
             # 시스템 메시지 구성: 공통→단원프롬프트→전체요약→연관청크
             system_msgs = [
@@ -301,6 +300,12 @@ def chatbot_tab(subject, topic):
                     messages=system_msgs + msgs + [{"role": "user", "content": q}]
                 )
             ans = resp.choices[0].message.content
+
+            # 교과서 원문 확인
+            if 'relevant_chunks' in st.session_state:
+                with st.expander("🔍 질문과 연관된 교과서 원문 보기", expanded=False):
+                    st.write('\n\n'.join(st.session_state['relevant_chunks']))
+
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
             msgs.extend([
                 {"role": "user", "content": q, "timestamp": ts},
