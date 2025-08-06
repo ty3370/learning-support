@@ -265,11 +265,11 @@ def chatbot_tab(subject, topic):
     if st.session_state[load_key]:
         q = st.session_state.pop(input_key, "")
         if q:
-            st.write("📄 전체 텍스트 길이:", len(full))
             # PDF 전체 텍스트 읽기
             texts = [extract_text_from_pdf(os.path.join(BASE_DIR, fn))
                      for fn in PDF_MAP[topic]]
             full = "\n\n".join(texts)
+            st.write("📄 전체 텍스트 길이:", len(full))
 
             # 한번만: 전체 요약 + embedding 캐시
             sum_key = f"sum_{subject}_{topic}".replace(" ", "_")
