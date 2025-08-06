@@ -272,12 +272,12 @@ def chatbot_tab(subject, topic):
             full = "\n\n".join(texts)
 
             # 디버깅용
-            st.write("🧪 사용 중인 파일:", PDF_MAP[topic])
-            st.write("📄 full 길이:", len(full))
-            st.write("📄 내용 일부:", full[:300])
-            for fn in PDF_MAP[topic]:
-                path = os.path.join(BASE_DIR, fn)
-                st.write(path, "존재 여부:", os.path.exists(path))
+#            st.write("🧪 사용 중인 파일:", PDF_MAP[topic])
+#            st.write("📄 full 길이:", len(full))
+#            st.write("📄 내용 일부:", full[:300])
+#            for fn in PDF_MAP[topic]:
+#                path = os.path.join(BASE_DIR, fn)
+#                st.write(path, "존재 여부:", os.path.exists(path))
 
             # 한번만: 전체 요약 + embedding 캐시
             full_hash = hashlib.md5(full.encode("utf-8")).hexdigest()
@@ -295,8 +295,8 @@ def chatbot_tab(subject, topic):
             chunks = chunk_text(full)
             embs   = embed_texts(chunks)
             relevant = get_relevant_chunks(q, chunks, embs, top_k=3)
-            st.write("📎 관련 청크 개수:", len(relevant))
-            st.write("🔍 청크 미리보기:", relevant)
+#            st.write("📎 관련 청크 개수:", len(relevant))
+#            st.write("🔍 청크 미리보기:", relevant)
 
             # 2) 질문 시: 상위 3개 청크만 가져와 답변 생성
             prompt = [
@@ -310,8 +310,8 @@ def chatbot_tab(subject, topic):
             with st.spinner("답변 생성 중…"):
                 resp = client.chat.completions.create(model=MODEL, messages=prompt)
                 ans = resp.choices[0].message.content
-                rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
-                ans = rag_info + ans
+#                rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
+#                ans = rag_info + ans
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
             msgs.extend([
                 {"role": "user", "content": q, "timestamp": ts},
