@@ -285,7 +285,6 @@ def chatbot_tab(subject, topic):
             # 교과서 원문 보기용: 세션 상태에 저장 (답변 후에도 유지되도록)
             st.session_state['relevant_chunks_by_question'] = st.session_state.get('relevant_chunks_by_question', {})
             st.session_state['relevant_chunks_by_question'][q] = relevant
-            st.session_state['last_question'] = q
 
             # 시스템 메시지 구성: 공통→단원프롬프트→전체요약→연관청크
             system_msgs = [
@@ -302,14 +301,6 @@ def chatbot_tab(subject, topic):
                     messages=system_msgs + msgs + [{"role": "user", "content": q}]
                 )
             ans = resp.choices[0].message.content
-
-            # 교과서 원문 확인
-            last_q = st.session_state.get('last_question')
-            chunks_by_q = st.session_state.get('relevant_chunks_by_question', {})
-            if last_q in chunks_by_q:
-                with st.expander("🔍 질문과 연관된 교과서 원문 보기", expanded=False):
-                    st.write('\n\n'.join(chunks_by_q[last_q]))
-
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
             msgs.extend([
                 {"role": "user", "content": q, "timestamp": ts},
@@ -319,6 +310,13 @@ def chatbot_tab(subject, topic):
             st.session_state[key] = msgs
             st.session_state[load_key] = False
             st.rerun()
+
+            # 교과서 원문 보기
+            q = st.session_state.get("current_question", "")
+            chunks_by_q = st.session_state.get('relevant_chunks_by_question', {})
+            if q in chunks_by_q:
+                with st.expander("🔍 질문과 연관된 교과서 원문 보기", expanded=False):
+                    st.write('\n\n'.join(chunks_by_q[q]))
 
 # ===== Pages =====
 def page_1():
