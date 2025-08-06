@@ -155,7 +155,7 @@ try:
                             st.image(img)
                             line = line.replace(img, "")
                         if line.strip():
-                            st.write(f"{role} {line.strip()}{ts}")
+                            st.markdown(f"{role}  \n{line.strip()}{ts}")
                             role = ""  # 한 번만 출력
                     cleaned_parts.append(txt)
 
