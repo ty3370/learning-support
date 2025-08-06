@@ -283,11 +283,6 @@ def chatbot_tab(subject, topic):
             full_hash = hashlib.md5(full.encode("utf-8")).hexdigest()
             sum_key = f"sum_{subject}_{topic}".replace(" ", "_")
 
-            # 질문마다: RAG로 연관 청크 검색
-            relevant = get_relevant_chunks(q, chunks, embs, top_k=3)
-            st.write("📎 관련 청크 개수:", len(relevant))
-            st.write("🔍 청크 미리보기:", relevant)
-
             # 1) 청크·임베딩 캐시
             if 'chunks_embs' not in st.session_state:
                 chunks = chunk_text(full)
@@ -295,6 +290,12 @@ def chatbot_tab(subject, topic):
                 st.session_state['chunks_embs'] = (chunks, embs)
         
             chunks, embs = st.session_state['chunks_embs']
+
+            # 질문마다: RAG로 연관 청크 검색
+            relevant = get_relevant_chunks(q, chunks, embs, top_k=3)
+            st.write("📎 관련 청크 개수:", len(relevant))
+            st.write("🔍 청크 미리보기:", relevant)
+
             # 2) 질문 시: 상위 3개 청크만 가져와 답변 생성
             relevant = get_relevant_chunks(q, chunks, embs, top_k=3)
             prompt = [
