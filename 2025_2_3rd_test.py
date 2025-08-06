@@ -12,7 +12,7 @@ import os
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MODEL = "gpt-4o"
-BASE_DIR = os.path.expanduser("~/Textbook_2025")
+BASE_DIR = "/home/ubuntu/Textbook_2025"
 PDF_MAP = {
     "Ⅳ. 자극과 반응": ["2025_Sci_3rd_04.pdf"],
     "Ⅴ. 생식과 유전": ["2025_Sci_3rd_05.pdf"],
