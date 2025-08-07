@@ -347,7 +347,7 @@ def chatbot_tab(subject, topic):
                 {"role": "system", "content": selected_science_prompt},
             ]
 
-            history = st.session_state.get("history", [])
+            history = [{"role": msg["role"], "content": msg["content"]} for msg in msgs]
 
             rag_system_message = {
                 "role": "system",
