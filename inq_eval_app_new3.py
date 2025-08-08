@@ -99,7 +99,7 @@ if password != st.secrets["PASSWORD"]:
 
 # ===== 과목/단원 선택 =====
 TOPIC_MAP = {
-    "과학": ["Ⅳ. 자극과 반응", "Ⅴ. 생식과 유전", "Ⅵ. 에너지 전환과 보존"]
+    "3학년 과학": ["Ⅳ. 자극과 반응", "Ⅴ. 생식과 유전", "Ⅵ. 에너지 전환과 보존"]
 }
 
 subject = st.selectbox("과목 선택", ["과목을 선택하세요"] + list(TOPIC_MAP.keys()))
@@ -134,7 +134,7 @@ try:
     chat_table = []
 
     for msg in chat:
-        role = "**You:**" if msg["role"] == "user" else "**과학 도우미:**"
+        role = "**You:**" if msg["role"] == "user" else "**학습 도우미:**"
         ts = f" ({msg['timestamp']})" if "timestamp" in msg else ""
         content = msg["content"]
 
@@ -160,7 +160,7 @@ try:
                     cleaned_parts.append(txt)
 
         chat_table.append({
-            "말한 사람": name if msg["role"] == "user" else "과학 도우미",
+            "말한 사람": name if msg["role"] == "user" else "학습 도우미",
             "내용": " ".join(cleaned_parts),
             "시간": msg.get("timestamp", "")
         })

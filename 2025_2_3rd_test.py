@@ -20,7 +20,7 @@ PDF_MAP = {
     "Ⅴ. 생식과 유전": ["2025_Sci_3rd_05.pdf"],
     "Ⅵ. 에너지 전환과 보존": ["2025_Sci_3rd_06.pdf"]
 }
-SUBJECTS = {"과학": list(PDF_MAP.keys())}
+SUBJECTS = {"3학년 과학": list(PDF_MAP.keys())}
 
 # Initial prompts
 COMMON_PROMPT = (
@@ -342,7 +342,7 @@ def chatbot_tab(subject, topic):
                         st.image(link)
                         txt = txt.replace(link, "")
                     if txt.strip():
-                        st.write(f"**과학 도우미:** {txt.strip()}")
+                        st.write(f"**학습 도우미:** {txt.strip()}")
 
     # 3) 입력창 & 버튼 (토글 방식)
     placeholder = st.empty()
