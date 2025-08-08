@@ -448,7 +448,7 @@ def chatbot_tab(subject, topic):
 # ===== Pages =====
 def page_1():
     st.title("2025-2학기 보라중 학습 도우미")
-    st.write("학습자 정보를 입력하세요.")
+    st.write("3학년용 학습 도우미 AI입니다. 아래에 학습자 정보를 입력하세요.")
     st.session_state['user_number'] = st.text_input("학번", value=st.session_state.get('user_number',''))
     st.session_state['user_name'] = st.text_input("이름", value=st.session_state.get('user_name',''))
     st.session_state['user_code'] = st.text_input("식별코드", value=st.session_state.get('user_code',''),
