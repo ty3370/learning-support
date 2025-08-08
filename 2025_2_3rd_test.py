@@ -500,6 +500,16 @@ def page_3():
     if unit == default_unit:
         return
 
+    # 단원이 바뀔 때 세션 상태 초기화
+    if "prev_unit" not in st.session_state:
+        st.session_state["prev_unit"] = unit
+
+    if unit != st.session_state["prev_unit"]:
+        for k in list(st.session_state.keys()):
+            if k.startswith("chat_") or k.startswith("buffer_") or k.startswith("loading_") or k.startswith("textarea_"):
+                del st.session_state[k]
+        st.session_state["prev_unit"] = unit
+
     chatbot_tab(subject, unit)
 
 # ===== Routing =====
