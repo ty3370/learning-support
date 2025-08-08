@@ -99,7 +99,7 @@ if password != st.secrets["PASSWORD"]:
 
 # ===== 과목/단원 선택 =====
 TOPIC_MAP = {
-    "3학년 과학": ["Ⅳ. 자극과 반응", "Ⅴ. 생식과 유전", "Ⅵ. 에너지 전환과 보존"]
+    "과학": ["Ⅳ. 자극과 반응", "Ⅴ. 생식과 유전", "Ⅵ. 에너지 전환과 보존"]
 }
 
 subject = st.selectbox("과목 선택", ["과목을 선택하세요"] + list(TOPIC_MAP.keys()))
