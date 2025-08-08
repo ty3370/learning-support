@@ -157,7 +157,7 @@ SCIENCE_06_PROMPT = (
     "다음 이미지를 사용해 에너지 전환과 보존 문제를 낼 수 있습니다: https://i.imgur.com/YwVXbdP.png \n 이미지에는 코일을 감은 플라스틱 관을 통해 낙하시킨 자석에 A, B의 두 지점이 지정되어 있습니다. A에서 중력에 의한 위치 에너지는 20J, 운동 에너지는 0J입니다. 자석이 코일을 통과한 후 B 지점에서 중력에 의한 위치 에너지는 2J, 운동 에너지는 14J입니다. \n"
 )
 
-def summarize_chunks(chunks, science_prompt, max_chunks=5):
+def summarize_chunks(chunks, science_prompt, max_chunks=3):
     summaries = []
     for chunk in chunks[:max_chunks]:
         resp = client.chat.completions.create(

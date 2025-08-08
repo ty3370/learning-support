@@ -90,7 +90,7 @@ SCIENCE_06_PROMPT = (
     "이 단원에서는 사용 가능한 이미지가 없습니다. \n"
 )
 
-def summarize_chunks(chunks, science_prompt, max_chunks=5):
+def summarize_chunks(chunks, science_prompt, max_chunks=3):
     summaries = []
     for chunk in chunks[:max_chunks]:
         resp = client.chat.completions.create(
