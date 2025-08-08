@@ -400,8 +400,8 @@ def chatbot_tab(subject, topic):
 #            st.write("📎 관련 청크 개수:", len(relevant))
 #            st.write("🔍 청크 미리보기:", relevant)
 
-            # 2) 질문 시: 상위 5개 청크만 가져와 답변 생성
-            relevant = relevant[:5]
+            # 2) 질문 시: 상위 3개 청크만 가져와 답변 생성
+            relevant = relevant[:3]
 
             stage.empty()
             stage = st.empty()
