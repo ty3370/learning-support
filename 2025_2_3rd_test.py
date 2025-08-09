@@ -13,7 +13,7 @@ import time
 
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-MODEL = "gpt-4o"
+MODEL = "gpt-5-nano"
 BASE_DIR = os.path.join(os.getcwd(), "Textbook_2025")
 PDF_MAP = {
     "Ⅳ. 자극과 반응": ["2025_Sci_3rd_04.pdf"],
