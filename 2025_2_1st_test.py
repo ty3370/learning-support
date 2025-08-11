@@ -414,6 +414,7 @@ def page_2(): # 현재 생략되어 있음
 
 def page_3():
     st.title("단원 학습")
+    st.markdown("❗ AI의 답변은 부정확할 수 있습니다. 의심스러운 정보는 반드시 교과 선생님께 직접 확인하세요.")
 
     default_subject = "과목을 선택하세요."
     subject = st.selectbox(
@@ -423,10 +424,10 @@ def page_3():
     if subject == default_subject:
         return
 
-    default_unit = "대단원을 선택하세요."
-    units = SUBJECTS[subject]  # 과목별 대단원 리스트
+    default_unit = "단원을 선택하세요."
+    units = SUBJECTS[subject]  # 과목별 단원 리스트
     unit = st.selectbox(
-        "대단원을 선택하세요.",
+        "단원을 선택하세요.",
         [default_unit] + units
     )
     if unit == default_unit:
