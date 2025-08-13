@@ -10,7 +10,8 @@ import numpy as np
 import os
 import hashlib
 import time, random
-from openai import RateLimitError
+import numpy as np
+from openai import RateLimitError, APIError, APIConnectionError, APITimeoutError
 
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -136,21 +137,27 @@ def extract_text_from_pdf(path):
 def chunk_text(text, size=1000):
     return [text[i:i+size] for i in range(0, len(text), size)]
 
-def embed_texts(texts):
-    if not texts:
-        return []
-    retries = 5
-    for attempt in range(retries):
-        try:
-            res = client.embeddings.create(
-                model="text-embedding-3-small",
-                input=texts
-            )
-            return [np.array(d.embedding) for d in res.data]
-        except RateLimitError:
-            sleep_time = (2 ** attempt) + random.random()
-            time.sleep(sleep_time)
-    raise RuntimeError("Embedding failed after retries")
+def embed_texts(texts, model="text-embedding-3-small",
+                batch_size=50, max_retries=5, base_sleep=0.6):
+    """
+    요청을 배치로 나누고, rate limit 시 지수 백오프 재시도
+    """
+    embeddings = []
+    for start in range(0, len(texts), batch_size):
+        batch = texts[start:start+batch_size]
+        for attempt in range(max_retries):
+            try:
+                res = client.embeddings.create(model=model, input=batch)
+                for d in res.data:
+                    embeddings.append(np.array(d.embedding))
+                time.sleep(0.05)  # 부하 완화
+                break
+            except (RateLimitError, APIError, APIConnectionError, APITimeoutError):
+                sleep_time = base_sleep * (2 ** attempt) * (1 + random.random()*0.3)
+                time.sleep(sleep_time)
+        else:
+            raise RuntimeError(f"Embedding failed after {max_retries} retries")
+    return embeddings
 
 def get_relevant_chunks(question, chunks, embeddings, top_k=3):
     if not chunks:
