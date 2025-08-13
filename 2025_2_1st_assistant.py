@@ -138,11 +138,17 @@ def chunk_text(text, size=1000):
 def embed_texts(texts):
     if not texts:
         return []
-    res = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=texts
-    )
-    return [np.array(d.embedding) for d in res.data]
+    embeddings = []
+    batch_size = 50   # 한 번에 처리할 개수 줄이기
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i+batch_size]
+        res = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=batch
+        )
+        embeddings.extend(np.array(d.embedding) for d in res.data)
+        time.sleep(0.1)  # 배치 사이 잠깐 쉬기
+    return embeddings
 
 def get_relevant_chunks(question, chunks, embeddings, top_k=3):
     if not chunks:
