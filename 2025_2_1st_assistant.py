@@ -9,7 +9,8 @@ import fitz  # PyMuPDF
 import numpy as np
 import os
 import hashlib
-import time
+import time, random
+from openai import RateLimitError
 
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
@@ -138,17 +139,18 @@ def chunk_text(text, size=1000):
 def embed_texts(texts):
     if not texts:
         return []
-    embeddings = []
-    batch_size = 50   # 한 번에 처리할 개수 줄이기
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i+batch_size]
-        res = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=batch
-        )
-        embeddings.extend(np.array(d.embedding) for d in res.data)
-        time.sleep(0.1)  # 배치 사이 잠깐 쉬기
-    return embeddings
+    retries = 5
+    for attempt in range(retries):
+        try:
+            res = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=texts
+            )
+            return [np.array(d.embedding) for d in res.data]
+        except RateLimitError:
+            sleep_time = (2 ** attempt) + random.random()
+            time.sleep(sleep_time)
+    raise RuntimeError("Embedding failed after retries")
 
 def get_relevant_chunks(question, chunks, embeddings, top_k=3):
     if not chunks:
