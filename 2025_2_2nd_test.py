@@ -7,14 +7,27 @@ import re
 from zoneinfo import ZoneInfo
 import fitz  # PyMuPDF
 import numpy as np
+import matplotlib.pyplot as plt
+from io import BytesIO
 import os
 import hashlib
 import time
+import uuid
+import base64
+from google import genai
+from google.genai import types
 
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MODEL = "gpt-4o"
 BASE_DIR = os.path.join(os.getcwd(), "Textbook_2025")
+_GEMINI_API_KEY = (
+    st.secrets.get("GOOGLE_API_KEY", None)
+    or st.secrets.get("GEMINI_API_KEY", None)
+    or os.getenv("GOOGLE_API_KEY")
+    or os.getenv("GEMINI_API_KEY")
+)
+GEMINI = genai.Client(api_key=_GEMINI_API_KEY) if _GEMINI_API_KEY else genai.Client()
 PDF_MAP = {
     "Ⅳ. 도형의 성질": ["2025_Math_2nd_04.pdf"]
 }
@@ -59,9 +72,18 @@ MATH_04_PROMPT = (
     "여러 가지 사각형의 성질, 여러 가지 사각형 사이의 관계 \n"
     "직사각형, 직사각형의 성질, 마름모, 마름모의 성질, 정사각형, 정사각형의 성질 \n\n"
     "2. 학습 지원 지침\n"
-    "별도의 학습 지원 지침은 없습니다. \n"
+    "설명 시 이미지를 사용해도 되고, 이미지 없이 텍스트로만 설명해도 됩니다. 문제를 낼 때도 텍스트로만 이루어진 문제, 표로 정보가 제공되는 문제, 이미지를 해석하는 문제, 선택형 문제, 서술형 문제 등을 다양하게 출제하세요. \n"
+    "하나의 대화에서는 하나의 그림만을 사용하세요. \n\n"
     "3. 사용 가능한 이미지 목록:\n"
-    "이 단원에서는 사용 가능한 이미지가 없습니다. \n"
+    "학생에게 내용을 설명하거나 문제를 내줄 때, 필요하다면 그 내용 또는 문제에 해당하는 도형을 자동 생성하여 함께 제시합니다. \n"
+)
+
+IMAGE_BASE_PROMPT = (
+    "중학교 2학년 대상 수학 도형 학습용 일러스트를 생성하세요. \n"
+    "한 장의 그림으로 핵심 관계가 명확히 보이도록 선명하고 간결하게 표현합니다. \n"
+    "불필요한 배경/장식은 제외하고, 점/선/각/평행·수직 표기와 보조선은 필요 시만 최소로 사용합니다. \n"
+    "텍스트 표기는 라벨(예: A, B, C, ∠ABC 등)로만 합니다.\n"
+    "이상의 프롬프트를 반영해, 다음 질문에 관한 이미지를 생성하세요: \n\n"
 )
 
 MATH_05_PROMPT = (
@@ -112,6 +134,71 @@ def clean_inline_latex(text):
     text = re.sub(r"\b(plus)\b", "+", text)
     text = re.sub(r"\b(minus)\b", "-", text)
     return text
+
+def _save_fig_return_path(fig, fname="diagram.png"):
+    buf = BytesIO()
+    fig.savefig(buf, bbox_inches="tight", dpi=160)
+    buf.seek(0)
+    path = os.path.join(os.getcwd(), fname)
+    with open(path, "wb") as f:
+        f.write(buf.read())
+    plt.close(fig)
+    return path
+
+
+def generate_diagram_image(prompt: str, size: str = "auto"):
+    """
+    LLM이 전달한 diagram_prompt로 도형 이미지를 생성하고,
+    (1) 로컬 파일 경로와 (2) base64 문자열을 함께 반환합니다.
+    """
+    try:
+        # 1) 입력 크기 검증 및 폴백 (기존 로직 유지)
+        allowed = {"1024x1024", "1024x1536", "1536x1024"}
+        if size == "auto":
+            sz = "1024x1024"
+        else:
+            sz = size if size in allowed else "1024x1024"
+
+        # 2) OpenAI의 'size' 개념을 Imagen의 'aspect_ratio'로 매핑
+        aspect_map = {
+            "1024x1024": "1:1",
+            "1024x1536": "3:4",
+            "1536x1024": "4:3",
+        }
+        aspect = aspect_map.get(sz, "1:1")
+
+        response = GEMINI.models.generate_images(
+            model="imagen-4.0-ultra-generate-001",
+            prompt=prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio=aspect,
+            ),
+        )
+
+        generated = response.generated_images[0].image
+        filename = os.path.join(os.getcwd(), f"diagram_{uuid.uuid4().hex}.png")
+
+        # 파일 저장 + b64 획득
+        try:
+            # PIL.Image 객체인 경우
+            generated.save(filename, format="PNG")
+            with open(filename, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+        except Exception:
+            # raw bytes인 경우 대비
+            img_bytes = getattr(generated, "image_bytes", None) or generated
+            if not isinstance(img_bytes, (bytes, bytearray)):
+                img_bytes = base64.b64decode(img_bytes)
+            with open(filename, "wb") as f:
+                f.write(img_bytes)
+            b64 = base64.b64encode(img_bytes).decode("utf-8")
+
+        return filename, b64
+
+    except Exception as e:
+        st.warning(f"도형 이미지 생성 실패: {e}")
+        return "", ""
 
 # RAG pipelines
 def extract_text_from_pdf(path):
@@ -239,17 +326,24 @@ def chatbot_tab(subject, topic):
         st.session_state[load_key] = False
     msgs = st.session_state[key]
 
+    # Select the appropriate math prompt for this unit
     math_prompts = {
         "Ⅳ. 도형의 성질": MATH_04_PROMPT
     }
     selected_math_prompt = math_prompts.get(topic, "")
 
     # 2) 기존 메시지 렌더링
+    last_user_msg = None      # 직전 사용자 메시지
+    last_assistant = None     # 직전 어시스턴트 메시지(답변 본문)
+
     for msg in msgs:
         if msg["role"] == "user":
             st.write(f"**You:** {msg['content']}")
+            last_user_msg = msg["content"]
         else:
+            # assistant 메시지 렌더링
             parts = re.split(r"(@@@@@.*?@@@@@)", msg['content'], flags=re.DOTALL)
+            rendered_text = []
             for part in parts:
                 if part.startswith("@@@@@") and part.endswith("@@@@@"):
                     st.latex(part[5:-5].strip())
@@ -260,6 +354,15 @@ def chatbot_tab(subject, topic):
                         txt = txt.replace(link, "")
                     if txt.strip():
                         st.write(f"**학습 도우미:** {txt.strip()}")
+                        rendered_text.append(txt.strip())
+            last_assistant = "\n".join(rendered_text) if rendered_text else None
+
+            # 조건부: 이 메시지에 '미리 생성된 도형' 정보가 있으면 표시
+            if msg.get("need_diagram"):
+                if msg.get("diagram_image_b64"):
+                    st.image(base64.b64decode(msg["diagram_image_b64"]), caption="AI가 생성한 그림으로, 부정확할 수 있습니다.")
+                elif msg.get("diagram_image_path"):
+                    st.image(msg["diagram_image_path"], caption="AI가 생성한 그림으로, 부정확할 수 있습니다.")
 
     # 3) 입력창 & 버튼 (토글 방식)
     placeholder = st.empty()
@@ -325,9 +428,25 @@ def chatbot_tab(subject, topic):
             stage = st.empty()
             show_stage("답변 생성 중...")
             time.sleep(0.5)
+
+            # ── LLM 시스템 지시: JSON 형식 강제 ─────────────────────────────
             system_messages = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_math_prompt},
+                {"role": "system", "content":
+                    (
+                        "이후 모든 답변은 반드시 다음 JSON 형식 '한 개'로만 출력하세요.\n"
+                        "{\n"
+                        '  "answer": "<학생에게 보여줄 최종 답변 텍스트 — LaTeX 규칙(@@@@@) 준수>",\n'
+                        '  "need_diagram": true | false,\n'
+                        '  "diagram_prompt": "<그려야 할 도형을 한국어로 간결히 설명 — 한 장의 그림 기준, 필요한 보조선/표시 포함; 필요 없으면 빈 문자열>",\n'
+                        '  "diagram_size": "auto | 1024x1024 | 1024x1536 | 1536x1024"\n'
+                        "}\n"
+                        "그림이 불필요하면 need_diagram=false로 하고, diagram_prompt는 빈 문자열로 두세요. "
+                        "한 대화에서는 하나의 그림만 사용합니다."
+                        "도형이나 위치관계 설명이 포함되면 가급적 need_diagram=true 로 설정합니다."
+                    )
+                },
             ]
 
             history = [{"role": msg["role"], "content": msg["content"]} for msg in msgs]
@@ -348,14 +467,61 @@ def chatbot_tab(subject, topic):
             ]
 
             resp = client.chat.completions.create(model=MODEL, messages=prompt)
-            ans = resp.choices[0].message.content
-#            rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
-#            ans = rag_info + ans
+            raw = resp.choices[0].message.content
+
+            # ── JSON 강제 추출: 코드펜스/서문 제거 후 첫 번째 {...}만 파싱 ─────────
+            raw = raw.strip()
+
+            # 코드펜스 제거
+            raw = re.sub(r'^```(?:json)?\s*', '', raw)
+            raw = re.sub(r'\s*```$', '', raw)
+
+            # 본문에서 첫 번째 JSON 객체만 추출
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            if m:
+                json_str = m.group(0)
+                try:
+                    parsed = json.loads(json_str)
+                    ans = (parsed.get("answer") or "").strip()
+                    need_diagram = bool(parsed.get("need_diagram", False))
+                    diagram_prompt = (parsed.get("diagram_prompt") or "").strip()
+                    diagram_size = (parsed.get("diagram_size") or "auto").strip()
+                except Exception:
+                    # JSON이 잡혔지만 파싱 실패 → 전체를 텍스트로 표기(최후 방어)
+                    ans = raw
+                    need_diagram = False
+                    diagram_prompt = ""
+                    diagram_size = "auto"
+            else:
+                # JSON 블록 자체가 없으면 전부 텍스트로 간주
+                ans = raw
+                need_diagram = False
+                diagram_prompt = ""
+                diagram_size = "auto"
+
+            # ── (조건부) 도형 즉시 생성 ────────
+            diagram_image_path = None
+            diagram_image_b64 = None
+            if need_diagram:
+                stage.empty()
+                stage = st.empty()
+                show_stage("그림 생성 중...")
+                time.sleep(0.3)
+                final_imagen_prompt = f"{IMAGE_BASE_PROMPT}\n\n학생 질문: {q}"
+                diagram_image_path, diagram_image_b64 = generate_diagram_image(final_imagen_prompt, size=diagram_size)
+
             stage.empty()
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
             msgs.extend([
                 {"role": "user", "content": q, "timestamp": ts},
-                {"role": "assistant", "content": ans}
+                {
+                    "role": "assistant",
+                    "content": ans,
+                    "need_diagram": need_diagram,
+                    "diagram_prompt": diagram_prompt,
+                    "diagram_image_path": diagram_image_path,
+                    "diagram_image_b64": diagram_image_b64
+                }
             ])
             save_chat(subject, topic, msgs)
             st.session_state[key] = msgs
@@ -381,7 +547,7 @@ def page_2(): # 현재 생략되어 있음
     st.title("⚠️모든 대화 내용은 저장되며, 교사가 열람할 수 있습니다.")
     st.write(
        """  
-        이 시스템은 중2 학생들을 위한 AI 학습 도우미입니다.
+        이 시스템은 중3 학생들을 위한 AI 학습 도우미입니다.
 
         입력된 모든 대화는 저장되며, 교사가 확인할 수 있습니다.
 
