@@ -143,7 +143,7 @@ def generate_diagram_image(prompt: str, size: str = "auto") -> str:
             model="gpt-image-1",
             prompt=prompt,
             size=sz,
-            quality="low",
+#            quality="low",
             output_format="jpeg",
             n=1
         )
@@ -440,7 +440,7 @@ def chatbot_tab(subject, topic):
             if need_diagram and diagram_prompt:
                 stage.empty()
                 stage = st.empty()
-                show_stage("도형 생성 중...")
+                show_stage("그림 생성 중...")
                 time.sleep(0.3)
                 diagram_image_path = generate_diagram_image(diagram_prompt, size=diagram_size)  # ✅ size 전달
 
