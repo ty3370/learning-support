@@ -608,7 +608,12 @@ def chatbot_tab(subject, topic):
                 "role": "system",
                 "content": (
                     "너는 수학 문제/설명에 필요한 도형을 '계획'하는 설계자다. "
-                    "출력은 JSON 한 줄이어야 한다. 키: "
+                    "도형은 문제 해결이나 이해에 꼭 필요한 경우에만 그려야 한다. "
+                    "단순 인사, 설명만으로 충분한 경우 등에는 도형을 그리지 않는다. "
+                    "이때는 반드시 need_diagram을 false로 설정하고, 다른 필드는 생략한다. "
+                    "출력은 JSON 한 줄이어야 한다. "
+                    "예: {\"need_diagram\": false, \"reason\": \"단순 인사\"} "
+                    "도형이 꼭 필요할 때만 다음 키들을 포함한다: "
                     "{need_diagram: bool, reason: str, "
                     "shape: 'isosceles_triangle'|'right_triangle'|'incenter'|'circumcenter'|'parallelogram'|'quadrilateral', "
                     "labels: {A:[x,y],B:[x,y],C:[x,y],D:[x,y]}, "
