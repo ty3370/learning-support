@@ -39,8 +39,8 @@ COMMON_PROMPT = (
     "틀린 표현 예시: 어떤 물체의 질량이 2kg이고 높이가 10m일 때 위치에너지는((E_p = 9.8 \\times m \\times h))입니다.\n"
     "맞는 표현 예시: 어떤 물체의 질량이 2kg이고 높이가 10m일 때 위치에너지는 다음과 같이 계산할 수 있습니다:\n\n@@@@@\nE_p = 9.8 \\times m \\times h\n@@@@@\n\n"
     "만약 LaTex를 줄바꿈 없이 사용해야만 하는 상황이라면, LaTex가 아닌 글로 쓰세요. \n틀린 표현 예시: 위치에너지는 9.8 \\times m \\times h입니다. \n맞는 표현 예시: 위치에너지는 9.8×m×h입니다. LaTex를 쓰려면 반드시 앞뒤로 줄바꿈해야 합니다.\n"
-    "그림을 출력해야 하는 경우, 링크를 답변에 포함하면 자동으로 그림이 출력됩니다. 따로 하이퍼링크를 만들 필요가 없습니다.\n"
-    "대화 예시: 눈의 구조는 아래 그림을 참고하세요. \n\n https://i.imgur.com/BIFjdBj.png \n"
+#    "그림을 출력해야 하는 경우, 링크를 답변에 포함하면 자동으로 그림이 출력됩니다. 따로 하이퍼링크를 만들 필요가 없습니다.\n"
+#    "대화 예시: 눈의 구조는 아래 그림을 참고하세요. \n\n https://i.imgur.com/BIFjdBj.png \n"
     "학생이 문제를 내달라고 하면, 교과서에 나오는 내용에 철저하게 기반해서 출제해 주세요. 한 번에 여러 개의 문제를 달라는 명시적인 요청이 없다면, 하나의 대화에서는 한 문제만 내세요.\n"
     "만약 학생이 어려운 문제, 난이도 높은 문제를 달라고 한다면, 개인마다 잘 하는 것과 부족한 것이 다르기 때문에 어렵다고 느끼는 문항도 개인별로 다르니 무엇을 잘 하고 못하는지에 대한 파악이 우선되어야 한다고 안내하세요. 내용 자체가 이해되지 않는 것인지, 내용은 이해하지만 문제에 적용하는 것이 어려운 건지, 텍스트·그림·표·그래프 등의 자료 해석이 어려운 건지, 서술형 답을 쓰는 게 어려운 건지 등 무엇을 어렵다고 느끼는 지 상담하며 진단하세요.\n"
     "생성한 응답이 너무 길어지면 학생이 이해하기 어려울 수 있으므로, 한 줄 이내로 짧고 간결하게 응답하세요. 한 줄을 넘을 수 밖에 없는 경우, 모든 정보를 한 번에 제시하지 말고 학생과 대화가 오가며 순차적으로 한 줄씩 설명하세요.\n"
@@ -246,6 +246,67 @@ def render_diagram_from_spec(spec):
 
     return img, facts, spec
 
+# === 새 다이어그램 렌더러 (plan JSON용: incenter/incircle 등 지원) ===
+def _pt(name, labels, fallback):
+    return tuple(labels.get(name, fallback))
+
+def render_diagram_from_plan(plan_dict):
+    fig, ax = plt.subplots(figsize=(4, 4), dpi=200)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    labels = plan_dict.get("labels", {})
+    shape  = plan_dict.get("shape", "quadrilateral")
+    helpers = plan_dict.get("helpers", [])
+
+    if shape in ("isosceles_triangle", "right_triangle", "incenter", "circumcenter"):
+        A = _pt("A", labels, (0.15, 0.2))
+        B = _pt("B", labels, (0.85, 0.2))
+        # 기본 C 위치(도형 유형에 따라 다름)
+        if shape == "isosceles_triangle":
+            C_default = (0.5, 0.8)
+        elif shape == "right_triangle":
+            C_default = (0.15, 0.8)
+        else:  # incenter, circumcenter 등
+            C_default = (0.55, 0.75)
+        C = _pt("C", labels, C_default)
+
+        poly = Polygon([A, B, C], fill=False)
+        ax.add_patch(poly)
+        for name, (x, y) in {"A": A, "B": B, "C": C}.items():
+            ax.plot([x], [y], marker="o")
+            ax.text(x, y, f" {name}", va="bottom", ha="left")
+
+        # 보조선 (간단 표시)
+        for h in helpers:
+            t = h.get("type")
+            if t == "altitude" and h.get("from") == "A":
+                x1, y1 = A; x2, y2 = B; x3, y3 = C
+                xm, ym = ((x2 + x3) / 2, (y2 + y3) / 2)  # BC 중점 근사
+                ax.add_line(Line2D([x1, xm], [y1, ym], linestyle="--"))
+            if t == "bisector" and h.get("from") in ("A", "B", "C"):
+                P = {"A": A, "B": B, "C": C}[h["from"]]
+                ax.add_line(Line2D([P[0], 0.5], [P[1], 0.5], linestyle="--"))
+
+    else:
+        # 사각형(임의/평행사변형) 기본형
+        A = _pt("A", labels, (0.2, 0.2))
+        B = _pt("B", labels, (0.8, 0.25))
+        D = _pt("D", labels, (0.35, 0.8))
+        C = _pt("C", labels, (0.85, 0.75))
+        poly = Polygon([A, B, C, D], fill=False)
+        ax.add_patch(poly)
+        for name, (x, y) in {"A": A, "B": B, "C": C, "D": D}.items():
+            ax.plot([x], [y], marker="o")
+            ax.text(x, y, f" {name}", va="bottom", ha="left")
+
+    buf = BytesIO()
+    fig.tight_layout(pad=0.3)
+    fig.savefig(buf, format="png")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
 # ===== File-based persistence (No DB) =====
 PERSIST_ROOT = pathlib.Path("./_persist")  # 프로젝트 폴더 내 저장소
 
@@ -437,11 +498,21 @@ def chatbot_tab(subject, topic):
             if spec_blocks:
                 try:
                     spec = json.loads(spec_blocks[-1])
-                    img_path, _, _ = render_diagram_from_spec(spec)
-                    if img_path and os.path.exists(img_path):
-                        st.image(img_path, caption="도형(자동 생성)", use_container_width=True)
-                except Exception:
-                    pass
+
+                    # 새 스키마(plan): 'shape' 또는 'labels' 키가 있으면 새 렌더러 사용
+                    if isinstance(spec, dict) and ("shape" in spec or "labels" in spec):
+                        buf = render_diagram_from_plan(spec)
+                        cap = spec.get("caption", "도형(자동 생성)")
+                        st.image(buf, caption=cap, use_container_width=True)
+
+                    else:
+                        # 옛 스키마(type/params): 기존 렌더러 사용
+                        img_path, _, _ = render_diagram_from_spec(spec)
+                        if img_path and os.path.exists(img_path):
+                            st.image(img_path, caption="도형(자동 생성)", use_container_width=True)
+
+                except Exception as e:
+                    st.warning(f"그림 표시 중 오류: {e}")
 
     # 3) 입력창 & 버튼 (토글 방식)
     placeholder = st.empty()
@@ -569,87 +640,6 @@ def chatbot_tab(subject, topic):
                 plan = _extract_json(_raw_plan)
             except Exception:
                 plan = {"need_diagram": False}
-
-            # 도형 렌더 함수(간단 버전) - 필요한 최소 유형만 지원
-            from io import BytesIO
-            import math
-            import matplotlib.pyplot as plt
-            from matplotlib.patches import Polygon
-            from matplotlib.lines import Line2D
-
-            def _pt(name, labels, fallback):
-                return tuple(labels.get(name, fallback))
-
-            def render_diagram_from_plan(plan_dict):
-                """plan_dict 기준으로 간단한 도형을 PNG 바이트로 반환"""
-                fig, ax = plt.subplots(figsize=(4, 4), dpi=200)
-                ax.set_aspect("equal")
-                ax.axis("off")
-
-                labels = plan_dict.get("labels", {})
-                shape  = plan_dict.get("shape", "quadrilateral")
-                helpers = plan_dict.get("helpers", [])
-
-                if shape in ("isosceles_triangle", "right_triangle", "incenter", "circumcenter"):
-                    A = _pt("A", labels, (0.15, 0.2))
-                    B = _pt("B", labels, (0.85, 0.2))
-                    if shape == "isosceles_triangle":
-                        C = _pt("C", labels, (0.5, 0.8))
-                    elif shape == "right_triangle":
-                        C = _pt("C", labels, (0.15, 0.8))
-                    else:
-                        C = _pt("C", labels, (0.55, 0.75))
-                    poly = Polygon([A, B, C], fill=False)
-                    ax.add_patch(poly)
-                    for name, (x, y) in {"A": A, "B": B, "C": C}.items():
-                        ax.plot([x], [y], marker="o")
-                        ax.text(x, y, f" {name}", va="bottom", ha="left")
-
-                    # 보조선 처리(아주 기본형)
-                    for h in helpers:
-                        t = h.get("type")
-                        if t == "altitude" and h.get("from") == "A":
-                            # A에서 BC에 내린 높이(근사)
-                            x1, y1 = A; x2, y2 = B; x3, y3 = C
-                            # BC 중점 근사
-                            xm, ym = ( (x2+x3)/2, (y2+y3)/2 )
-                            ax.add_line(Line2D([x1, xm], [y1, ym], linestyle="--"))
-                        if t == "bisector" and h.get("from") in ("A","B","C"):
-                            # 각의 이등분선(근사)
-                            which = h.get("from")
-                            P = {"A":A,"B":B,"C":C}[which]
-                            ax.add_line(Line2D([P[0], 0.5], [P[1], 0.5], linestyle="--"))
-
-                elif shape in ("parallelogram", "quadrilateral"):
-                    A = _pt("A", labels, (0.2, 0.2))
-                    B = _pt("B", labels, (0.8, 0.25))
-                    D = _pt("D", labels, (0.35, 0.8))
-                    if shape == "parallelogram":
-                        # 평행사변형: B-A와 D-A 벡터를 이용
-                        vx, vy = (B[0]-A[0], B[1]-A[1])
-                        wx, wy = (D[0]-A[0], D[1]-A[1])
-                        C = (A[0]+vx+wx, A[1]+vy+wy)
-                    else:
-                        C = _pt("C", labels, (0.85, 0.75))
-                    poly = Polygon([A, B, C, D], fill=False)
-                    ax.add_patch(poly)
-                    for name, (x, y) in {"A":A,"B":B,"C":C,"D":D}.items():
-                        ax.plot([x], [y], marker="o")
-                        ax.text(x, y, f" {name}", va="bottom", ha="left")
-
-                    # 보조선
-                    for h in helpers:
-                        if h.get("type") == "diagonal" and h.get("from") in ("A","B","C","D") and h.get("to") in ("A","B","C","D"):
-                            P = {"A":A,"B":B,"C":C,"D":D}[h["from"]]
-                            Q = {"A":A,"B":B,"C":C,"D":D}[h["to"]]
-                            ax.add_line(Line2D([P[0], Q[0]],[P[1], Q[1]], linestyle="--"))
-
-                buf = BytesIO()
-                fig.tight_layout(pad=0.3)
-                fig.savefig(buf, format="png")
-                plt.close(fig)
-                buf.seek(0)
-                return buf
 
             # 필요 시 도형 생성 및 화면 표시(+ LLM이 이해할 수 있도록 spec도 메시지에 포함)
             image_caption = ""
