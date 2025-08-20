@@ -143,7 +143,6 @@ def generate_diagram_image(prompt: str, size: str = "auto") -> str:
             model="gpt-image-1",
             prompt=prompt,
             size=sz,
-#            quality="low",
             output_format="jpeg",
             n=1
         )
