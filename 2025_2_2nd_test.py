@@ -506,7 +506,7 @@ def chatbot_tab(subject, topic):
                 stage = st.empty()
                 show_stage("그림 생성 중...")
                 time.sleep(0.3)
-                final_imagen_prompt = f"{IMAGE_BASE_PROMPT}\n\n학생 질문: {q}"
+                final_imagen_prompt = f"{MATH_04_PROMPT}\n{IMAGE_BASE_PROMPT}\n\n학생 질문: {q}"
                 diagram_image_path, diagram_image_b64 = generate_diagram_image(final_imagen_prompt, size=diagram_size)
 
             stage.empty()
