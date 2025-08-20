@@ -78,6 +78,14 @@ MATH_04_PROMPT = (
     "학생에게 내용을 설명하거나 문제를 내줄 때, 필요하다면 그 내용 또는 문제에 해당하는 도형을 자동 생성하여 함께 제시합니다. \n"
 )
 
+IMAGE_BASE_PROMPT = (
+    "중학교 2학년 대상 수학 도형 학습용 일러스트를 생성하세요. \n"
+    "한 장의 그림으로 핵심 관계가 명확히 보이도록 선명하고 간결하게 표현합니다. \n"
+    "불필요한 배경/장식은 제외하고, 점/선/각/평행·수직 표기와 보조선은 필요 시만 최소로 사용합니다. \n"
+    "텍스트 표기는 라벨(예: A, B, C, ∠ABC 등)로만 합니다.\n"
+    "이상의 프롬프트를 반영해, 다음 질문에 관한 이미지를 생성하세요: \n\n"
+)
+
 MATH_05_PROMPT = (
     "당신은 수학의 Ⅴ. XXX 단원 학습 지원을 담당합니다. 아래 1~3을 고려해 학습을 지원하세요. \n"
     "1. 단원의 주요 키워드\n"
@@ -136,27 +144,6 @@ def _save_fig_return_path(fig, fname="diagram.png"):
         f.write(buf.read())
     plt.close(fig)
     return path
-
-def make_diagram_prompt_without_chunks(question: str) -> str:
-    """
-    청크를 전혀 사용하지 않고, 학생의 질문만을 근거로 그림 프롬프트를 1줄로 생성합니다.
-    출력은 순수 텍스트(코드펜스/JSON 금지)로만 받습니다.
-    """
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "너는 한국어로 도형을 그리기 위한 프롬프트만 1줄로 작성하는 보조자다. "
-                    "출력은 순수 텍스트 1줄만 제공하고, 코드펜스/JSON/설명/따옴표/이모지/불릿을 절대 포함하지 마라. "
-                    "프롬프트에는 '교과서/청크/발췌' 등의 메타 표현을 쓰지 말고, 사용자의 질문만 근거로 간결히 작성하라."
-                )
-            },
-            {"role": "user", "content": question}
-        ]
-    )
-    return (resp.choices[0].message.content or "").strip()
 
 
 def generate_diagram_image(prompt: str, size: str = "auto"):
@@ -512,22 +499,16 @@ def chatbot_tab(subject, topic):
                 diagram_prompt = ""
                 diagram_size = "auto"
 
-            # ── diagram_prompt 재생성: 청크 완전 배제(2차 호출, 질문만 근거) ────────
-            if need_diagram:
-                try:
-                    diagram_prompt = make_diagram_prompt_without_chunks(q)
-                except Exception:
-                    pass
-
-            # ── (조건부) 도형 즉시 생성: show_stage 표시 후 이미지 생성 ────────
+            # ── (조건부) 도형 즉시 생성 ────────
             diagram_image_path = None
             diagram_image_b64 = None
-            if need_diagram and diagram_prompt:
+            if need_diagram:
                 stage.empty()
                 stage = st.empty()
                 show_stage("그림 생성 중...")
                 time.sleep(0.3)
-                diagram_image_path, diagram_image_b64 = generate_diagram_image(diagram_prompt, size=diagram_size)
+                final_imagen_prompt = f"{IMAGE_BASE_PROMPT}\n\n학생 질문: {q}"
+                diagram_image_path, diagram_image_b64 = generate_diagram_image(final_imagen_prompt, size=diagram_size)
 
             stage.empty()
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
