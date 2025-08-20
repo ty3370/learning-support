@@ -14,20 +14,11 @@ import hashlib
 import time
 import uuid
 import base64
-from google import genai
-from google.genai import types
 
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MODEL = "gpt-4o"
 BASE_DIR = os.path.join(os.getcwd(), "Textbook_2025")
-_GEMINI_API_KEY = (
-    st.secrets.get("GOOGLE_API_KEY", None)
-    or st.secrets.get("GEMINI_API_KEY", None)
-    or os.getenv("GOOGLE_API_KEY")
-    or os.getenv("GEMINI_API_KEY")
-)
-GEMINI = genai.Client(api_key=_GEMINI_API_KEY) if _GEMINI_API_KEY else genai.Client()
 PDF_MAP = {
     "Ⅳ. 도형의 성질": ["2025_Math_2nd_04.pdf"]
 }
@@ -137,86 +128,31 @@ def _save_fig_return_path(fig, fname="diagram.png"):
     plt.close(fig)
     return path
 
-def make_diagram_prompt_without_chunks(question: str) -> str:
-    """
-    청크를 전혀 사용하지 않고, 학생의 질문만을 근거로 그림 프롬프트를 1줄로 생성합니다.
-    출력은 순수 텍스트(코드펜스/JSON 금지)로만 받습니다.
-    """
-    resp = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "너는 한국어로 도형을 그리기 위한 프롬프트만 1줄로 작성하는 보조자다. "
-                    "출력은 순수 텍스트 1줄만 제공하고, 코드펜스/JSON/설명/따옴표/이모지/불릿을 절대 포함하지 마라. "
-                    "프롬프트에는 '교과서/청크/발췌' 등의 메타 표현을 쓰지 말고, 사용자의 질문만 근거로 간결히 작성하라."
-                )
-            },
-            {"role": "user", "content": question}
-        ]
-    )
-    return (resp.choices[0].message.content or "").strip()
-
-
 def generate_diagram_image(prompt: str, size: str = "auto") -> str:
     """
     LLM이 전달한 diagram_prompt로 도형 이미지를 생성하고, 로컬 파일 경로를 반환합니다.
-    - size 입력은 내부적으로 Imagen의 aspect_ratio로 매핑됩니다.
-      * '1024x1024' -> '1:1'
-      * '1024x1536' -> '3:4'
-      * '1536x1024' -> '4:3'
-      * 'auto' 또는 그 외 -> '1:1'
+    - OpenAI Images API를 사용 (model: gpt-image-1)
+    - size: '1024x1024' | '1024x1536' | '1536x1024' | 'auto'
     """
     try:
-        # 1) 입력 크기 검증 및 폴백 (기존 로직 유지)
+        # 허용 크기 검증 및 폴백
         allowed = {"1024x1024", "1024x1536", "1536x1024"}
         if size == "auto":
             sz = "1024x1024"
         else:
             sz = size if size in allowed else "1024x1024"
 
-        # 2) OpenAI의 'size' 개념을 Imagen의 'aspect_ratio'로 매핑
-        aspect_map = {
-            "1024x1024": "1:1",
-            "1024x1536": "3:4",
-            "1536x1024": "4:3",
-        }
-        aspect = aspect_map.get(sz, "1:1")
-
-        # (권장) 한국어 프롬프트 주의: Imagen은 현재 영어 프롬프트에 최적화되어 있습니다.
-        # 공식 가이드: "Imagen supports English only prompts at this time"
-        # 필요 시, 상위 LLM으로 번역 후 전달하는 전처리를 고려해도 됩니다.  :contentReference[oaicite:7]{index=7}
-
-        # 3) Imagen 4 Fast 호출
-        response = GEMINI.models.generate_images(
-            model="imagen-4.0-ultra-generate-001",
+        result = client.images.generate(
+            model="gpt-image-1",
             prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio=aspect,
-            ),
+            size=sz,
+            n=1
         )
-
-        # 4) 1장만 저장
-        generated = response.generated_images[0].image
+        b64 = result.data[0].b64_json
         filename = os.path.join(os.getcwd(), f"diagram_{uuid.uuid4().hex}.png")
-
-        # SDK는 PIL Image 객체를 반환합니다(문서 예시: generated_image.image.show()).
-        # 바로 파일로 저장합니다.
-        try:
-            generated.save(filename, format="PNG")
-        except Exception:
-            # 혹시 객체가 raw bytes 인 경우를 대비한 세이프가드
-            try:
-                img_bytes = getattr(generated, "image_bytes", None) or generated
-                with open(filename, "wb") as f:
-                    f.write(img_bytes if isinstance(img_bytes, (bytes, bytearray)) else base64.b64decode(img_bytes))
-            except Exception as _:
-                raise
-
+        with open(filename, "wb") as f:
+            f.write(base64.b64decode(b64))
         return filename
-
     except Exception as e:
         st.warning(f"도형 이미지 생성 실패: {e}")
         return ""
@@ -517,16 +453,16 @@ def chatbot_tab(subject, topic):
                 diagram_prompt = ""
                 diagram_size = "auto"
 
-            # ── diagram_prompt 재생성: 청크 완전 배제(2차 호출, 질문만 근거) ────────
-            if need_diagram:
-                try:
-                    diagram_prompt = make_diagram_prompt_without_chunks(q)
-                except Exception:
-                    pass
-
             # ── (조건부) 도형 즉시 생성: show_stage 표시 후 이미지 생성 ────────
             diagram_image_path = None
-            if need_diagram and diagram_prompt:
+            if need_diagram:
+                # 🔒 청크 영향 제거: LLM이 준 diagram_prompt는 쓰지 않고, 질문(q)만 사용
+                diagram_prompt = (
+                    "다음 문제를 한 장의 단순한 도형으로 표현하세요. "
+                    "필요한 보조선/각도/표시는 최소로 하고, 텍스트 표기는 최소화합니다. "
+                    f"문제 요약: {q[:180]}"
+                )
+
                 stage.empty()
                 stage = st.empty()
                 show_stage("그림 생성 중...")
