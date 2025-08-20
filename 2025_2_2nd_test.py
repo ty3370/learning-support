@@ -66,7 +66,7 @@ MATH_04_PROMPT = (
     "설명 시 이미지를 사용해도 되고, 이미지 없이 텍스트로만 설명해도 됩니다. 문제를 낼 때도 텍스트로만 이루어진 문제, 표로 정보가 제공되는 문제, 이미지를 해석하는 문제, 선택형 문제, 서술형 문제 등을 다양하게 출제하세요. \n"
     "하나의 대화에서는 하나의 그림만을 사용하세요. \n\n"
     "3. 사용 가능한 이미지 목록:\n"
-    "질문에 맞는 도형 1개와 필요한 보조선을 자동 생성하여 함께 제시합니다. \n"
+    "학생에게 내용을 설명하거나 문제를 내줄 때, 필요하다면 그 내용 또는 문제에 해당하는 도형을 자동 생성하여 함께 제시합니다. \n"
 )
 
 MATH_05_PROMPT = (
@@ -143,6 +143,8 @@ def generate_diagram_image(prompt: str, size: str = "auto") -> str:
             model="gpt-image-1",
             prompt=prompt,
             size=sz,
+            quality="low",
+            output_format="jpeg",
             n=1
         )
         b64 = result.data[0].b64_json
@@ -395,6 +397,7 @@ def chatbot_tab(subject, topic):
                         "}\n"
                         "그림이 불필요하면 need_diagram=false로 하고, diagram_prompt는 빈 문자열로 두세요. "
                         "한 대화에서는 하나의 그림만 사용합니다."
+                        "도형이나 위치관계 설명이 포함되면 가급적 need_diagram=true 로 설정합니다."
                     )
                 },
             ]
