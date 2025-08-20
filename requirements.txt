@@ -4,3 +4,4 @@ openai
 pymupdf
 numpy
 tzdata
+matplotlib
