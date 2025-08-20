@@ -145,61 +145,6 @@ def _save_fig_return_path(fig, fname="diagram.png"):
     plt.close(fig)
     return path
 
-
-def generate_diagram_image(prompt: str, size: str = "auto"):
-    """
-    LLM이 전달한 diagram_prompt로 도형 이미지를 생성하고,
-    (1) 로컬 파일 경로와 (2) base64 문자열을 함께 반환합니다.
-    """
-    try:
-        # 1) 입력 크기 검증 및 폴백 (기존 로직 유지)
-        allowed = {"1024x1024", "1024x1536", "1536x1024"}
-        if size == "auto":
-            sz = "1024x1024"
-        else:
-            sz = size if size in allowed else "1024x1024"
-
-        # 2) OpenAI의 'size' 개념을 Imagen의 'aspect_ratio'로 매핑
-        aspect_map = {
-            "1024x1024": "1:1",
-            "1024x1536": "3:4",
-            "1536x1024": "4:3",
-        }
-        aspect = aspect_map.get(sz, "1:1")
-
-        response = GEMINI.models.generate_images(
-            model="imagen-4.0-ultra-generate-001",
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio=aspect,
-            ),
-        )
-
-        generated = response.generated_images[0].image
-        filename = os.path.join(os.getcwd(), f"diagram_{uuid.uuid4().hex}.png")
-
-        # 파일 저장 + b64 획득
-        try:
-            # PIL.Image 객체인 경우
-            generated.save(filename, format="PNG")
-            with open(filename, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("utf-8")
-        except Exception:
-            # raw bytes인 경우 대비
-            img_bytes = getattr(generated, "image_bytes", None) or generated
-            if not isinstance(img_bytes, (bytes, bytearray)):
-                img_bytes = base64.b64decode(img_bytes)
-            with open(filename, "wb") as f:
-                f.write(img_bytes)
-            b64 = base64.b64encode(img_bytes).decode("utf-8")
-
-        return filename, b64
-
-    except Exception as e:
-        st.warning(f"도형 이미지 생성 실패: {e}")
-        return "", ""
-
 # RAG pipelines
 def extract_text_from_pdf(path):
     if not os.path.exists(path):
@@ -357,13 +302,6 @@ def chatbot_tab(subject, topic):
                         rendered_text.append(txt.strip())
             last_assistant = "\n".join(rendered_text) if rendered_text else None
 
-            # 조건부: 이 메시지에 '미리 생성된 도형' 정보가 있으면 표시
-            if msg.get("need_diagram"):
-                if msg.get("diagram_image_b64"):
-                    st.image(base64.b64decode(msg["diagram_image_b64"]), caption="AI가 생성한 그림으로, 부정확할 수 있습니다.")
-                elif msg.get("diagram_image_path"):
-                    st.image(msg["diagram_image_path"], caption="AI가 생성한 그림으로, 부정확할 수 있습니다.")
-
     # 3) 입력창 & 버튼 (토글 방식)
     placeholder = st.empty()
     if not st.session_state[load_key]:
@@ -498,17 +436,6 @@ def chatbot_tab(subject, topic):
                 need_diagram = False
                 diagram_prompt = ""
                 diagram_size = "auto"
-
-            # ── (조건부) 도형 즉시 생성 ────────
-            diagram_image_path = None
-            diagram_image_b64 = None
-            if need_diagram:
-                stage.empty()
-                stage = st.empty()
-                show_stage("그림 생성 중...")
-                time.sleep(0.3)
-                final_imagen_prompt = f"{IMAGE_BASE_PROMPT}\n\n학생 질문: {q}"
-                diagram_image_path, diagram_image_b64 = generate_diagram_image(final_imagen_prompt, size=diagram_size)
 
             stage.empty()
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
