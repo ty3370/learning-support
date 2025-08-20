@@ -444,7 +444,7 @@ def chatbot_tab(subject, topic):
                     spec = json.loads(spec_blocks[-1])
                     img_path, _, _ = render_diagram_from_spec(spec)
                     if img_path and os.path.exists(img_path):
-                        st.image(img_path, caption="도형(자동 생성)")
+                        st.image(img_path, caption="도형(자동 생성)", use_container_width=True)
                 except Exception:
                     pass
 
@@ -650,8 +650,8 @@ def chatbot_tab(subject, topic):
                             ax.add_line(Line2D([P[0], Q[0]],[P[1], Q[1]], linestyle="--"))
 
                 buf = BytesIO()
-                fig.tight_layout(pad=0.1)
-                fig.savefig(buf, format="png", bbox_inches="tight")
+                fig.tight_layout(pad=0.3)
+                fig.savefig(buf, format="png")
                 plt.close(fig)
                 buf.seek(0)
                 return buf
@@ -661,7 +661,7 @@ def chatbot_tab(subject, topic):
             if plan.get("need_diagram"):
                 buf = render_diagram_from_plan(plan)
                 image_caption = plan.get("caption", "")
-                st.image(buf.getvalue(), caption=image_caption, use_column_width=False)
+                st.image(buf, caption=image_caption, use_container_width=True)
 
                 # LLM이 도형을 '이해'하도록, 도형 설계 사양을 함께 저장(텍스트로)
                 spec_text = "```diagram_spec\n" + json.dumps(plan, ensure_ascii=False) + "\n```"
