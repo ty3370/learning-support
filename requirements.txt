@@ -5,3 +5,4 @@ pymupdf
 numpy
 tzdata
 matplotlib
+google-generativeai
