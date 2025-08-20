@@ -192,6 +192,44 @@ def clean_inline_latex(text):
     text = re.sub(r"\b(minus)\b", "-", text)
     text = re.sub(r"\^\s*\\circ", "°", text)
     text = re.sub(r"\^circ", "°", text)
+
+    replacements = {
+        r"\\perp": "⟂",
+        r"\\angle": "∠",
+        r"\\parallel": "∥",
+        r"\\infty": "∞",
+        r"\\approx": "≈",
+        r"\\sim": "∼",
+        r"\\neq": "≠",
+        r"\\leq": "≤",
+        r"\\geq": "≥",
+        r"\\pm": "±",
+        r"\\mp": "∓",
+        r"\\cdot": "·",
+        r"\\times": "×",
+        r"\\div": "÷",
+        r"\\propto": "∝",
+        r"\\equiv": "≡",
+        r"\\cong": "≅",
+        r"\\subseteq": "⊆",
+        r"\\supseteq": "⊇",
+        r"\\subset": "⊂",
+        r"\\supset": "⊃",
+        r"\\in": "∈",
+        r"\\notin": "∉",
+        r"\\cup": "∪",
+        r"\\cap": "∩",
+        r"\\forall": "∀",
+        r"\\exists": "∃",
+        r"\\nabla": "∇",
+        r"\\partial": "∂",
+    }
+    for pattern, symbol in replacements.items():
+        text = re.sub(pattern, symbol, text)
+
+    text = re.sub(r"\bperp\b", "⟂", text)
+    text = re.sub(r"\bangle\b", "∠", text)
+
     return text
 
 # RAG pipelines
