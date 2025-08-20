@@ -136,8 +136,11 @@ def generate_diagram_image(prompt: str, size: str = "auto") -> str:
     """
     try:
         # 허용 크기 검증 및 폴백
-        allowed = {"1024x1024", "1024x1536", "1536x1024", "auto"}
-        sz = size if size in allowed else "auto"
+        allowed = {"1024x1024", "1024x1536", "1536x1024"}
+        if size == "auto":
+            sz = "1024x1024"
+        else:
+            sz = size if size in allowed else "1024x1024"
 
         result = client.images.generate(
             model="gpt-image-1",
@@ -420,18 +423,35 @@ def chatbot_tab(subject, topic):
             resp = client.chat.completions.create(model=MODEL, messages=prompt)
             raw = resp.choices[0].message.content
 
-            # ── JSON 파싱: 실패하면 일반 텍스트로 폴백 ───────────────────────
-            try:
-                parsed = json.loads(raw)
-                ans = parsed.get("answer", "").strip()
-                need_diagram = bool(parsed.get("need_diagram", False))
-                diagram_prompt = (parsed.get("diagram_prompt") or "").strip()
-                diagram_size = (parsed.get("diagram_size") or "auto").strip()   # ✅ 추가
-            except Exception:
-                ans = raw.strip()
+            # ── JSON 강제 추출: 코드펜스/서문 제거 후 첫 번째 {...}만 파싱 ─────────
+            raw = raw.strip()
+
+            # 코드펜스 제거
+            raw = re.sub(r'^```(?:json)?\s*', '', raw)
+            raw = re.sub(r'\s*```$', '', raw)
+
+            # 본문에서 첫 번째 JSON 객체만 추출
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            if m:
+                json_str = m.group(0)
+                try:
+                    parsed = json.loads(json_str)
+                    ans = (parsed.get("answer") or "").strip()
+                    need_diagram = bool(parsed.get("need_diagram", False))
+                    diagram_prompt = (parsed.get("diagram_prompt") or "").strip()
+                    diagram_size = (parsed.get("diagram_size") or "auto").strip()
+                except Exception:
+                    # JSON이 잡혔지만 파싱 실패 → 전체를 텍스트로 표기(최후 방어)
+                    ans = raw
+                    need_diagram = False
+                    diagram_prompt = ""
+                    diagram_size = "auto"
+            else:
+                # JSON 블록 자체가 없으면 전부 텍스트로 간주
+                ans = raw
                 need_diagram = False
                 diagram_prompt = ""
-                diagram_size = "auto"                                           # ✅ 추가
+                diagram_size = "auto"
 
             # ── (조건부) 도형 즉시 생성: show_stage 표시 후 이미지 생성 ────────
             diagram_image_path = None
