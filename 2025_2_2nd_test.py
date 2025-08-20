@@ -70,14 +70,14 @@ MATH_04_PROMPT = (
 )
 
 MATH_05_PROMPT = (
-    "당신은 과학의 Ⅴ. 생식과 유전 단원 학습 지원을 담당합니다. 아래 1~3을 고려해 학습을 지원하세요. \n"
+    "당신은 수학의 Ⅴ. XXX 단원 학습 지원을 담당합니다. 아래 1~3을 고려해 학습을 지원하세요. \n"
     "1. 단원의 주요 키워드\n"
     "2. 학습 지원 지침\n"
     "3. 사용 가능한 이미지 목록:\n"
 )
 
 MATH_06_PROMPT = (
-    "당신은 과학의 Ⅴ. 생식과 유전 단원 학습 지원을 담당합니다. 아래 1~3을 고려해 학습을 지원하세요. \n"
+    "당신은 수학의 Ⅴ. XXX 단원 학습 지원을 담당합니다. 아래 1~3을 고려해 학습을 지원하세요. \n"
     "1. 단원의 주요 키워드\n"
     "2. 학습 지원 지침\n"
     "3. 사용 가능한 이미지 목록:\n"
@@ -143,8 +143,6 @@ def generate_diagram_image(prompt: str, size: str = "auto") -> str:
             model="gpt-image-1",
             prompt=prompt,
             size=sz,
-            quality="high",
-            output_format="jpeg",
             n=1
         )
         b64 = result.data[0].b64_json
