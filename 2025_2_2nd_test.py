@@ -14,11 +14,20 @@ import hashlib
 import time
 import uuid
 import base64
+from google import genai
+from google.genai import types
 
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MODEL = "gpt-4o"
 BASE_DIR = os.path.join(os.getcwd(), "Textbook_2025")
+_GEMINI_API_KEY = (
+    st.secrets.get("GOOGLE_API_KEY", None)
+    or st.secrets.get("GEMINI_API_KEY", None)
+    or os.getenv("GOOGLE_API_KEY")
+    or os.getenv("GEMINI_API_KEY")
+)
+GEMINI = genai.Client(api_key=_GEMINI_API_KEY) if _GEMINI_API_KEY else genai.Client()
 PDF_MAP = {
     "Ⅳ. 도형의 성질": ["2025_Math_2nd_04.pdf"]
 }
@@ -131,28 +140,63 @@ def _save_fig_return_path(fig, fname="diagram.png"):
 def generate_diagram_image(prompt: str, size: str = "auto") -> str:
     """
     LLM이 전달한 diagram_prompt로 도형 이미지를 생성하고, 로컬 파일 경로를 반환합니다.
-    - OpenAI Images API를 사용 (model: gpt-image-1)
-    - size: '1024x1024' | '1024x1536' | '1536x1024' | 'auto'
+    - Google Gemini API(Imagen 4 Fast) 사용 (model: imagen-4.0-fast-generate-001)
+    - size 입력은 내부적으로 Imagen의 aspect_ratio로 매핑됩니다.
+      * '1024x1024' -> '1:1'
+      * '1024x1536' -> '3:4'
+      * '1536x1024' -> '4:3'
+      * 'auto' 또는 그 외 -> '1:1'
+    참고: Imagen 4 Fast의 모델 코드는 공식 문서의 Model versions에 명시되어 있습니다. (imagen-4.0-fast-generate-001)
     """
     try:
-        # 허용 크기 검증 및 폴백
+        # 1) 입력 크기 검증 및 폴백 (기존 로직 유지)
         allowed = {"1024x1024", "1024x1536", "1536x1024"}
         if size == "auto":
             sz = "1024x1024"
         else:
             sz = size if size in allowed else "1024x1024"
 
-        result = client.images.generate(
-            model="gpt-image-1",
+        # 2) OpenAI의 'size' 개념을 Imagen의 'aspect_ratio'로 매핑
+        aspect_map = {
+            "1024x1024": "1:1",
+            "1024x1536": "3:4",
+            "1536x1024": "4:3",
+        }
+        aspect = aspect_map.get(sz, "1:1")
+
+        # (권장) 한국어 프롬프트 주의: Imagen은 현재 영어 프롬프트에 최적화되어 있습니다.
+        # 공식 가이드: "Imagen supports English only prompts at this time"
+        # 필요 시, 상위 LLM으로 번역 후 전달하는 전처리를 고려해도 됩니다.  :contentReference[oaicite:7]{index=7}
+
+        # 3) Imagen 4 Fast 호출
+        response = GEMINI.models.generate_images(
+            model="imagen-4.0-fast-generate-001",
             prompt=prompt,
-            size=sz,
-            n=1
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio=aspect,
+            ),
         )
-        b64 = result.data[0].b64_json
+
+        # 4) 1장만 저장
+        generated = response.generated_images[0].image
         filename = os.path.join(os.getcwd(), f"diagram_{uuid.uuid4().hex}.png")
-        with open(filename, "wb") as f:
-            f.write(base64.b64decode(b64))
+
+        # SDK는 PIL Image 객체를 반환합니다(문서 예시: generated_image.image.show()).
+        # 바로 파일로 저장합니다.
+        try:
+            generated.save(filename, format="PNG")
+        except Exception:
+            # 혹시 객체가 raw bytes 인 경우를 대비한 세이프가드
+            try:
+                img_bytes = getattr(generated, "image_bytes", None) or generated
+                with open(filename, "wb") as f:
+                    f.write(img_bytes if isinstance(img_bytes, (bytes, bytearray)) else base64.b64decode(img_bytes))
+            except Exception as _:
+                raise
+
         return filename
+
     except Exception as e:
         st.warning(f"도형 이미지 생성 실패: {e}")
         return ""
