@@ -7,27 +7,21 @@ import re
 from zoneinfo import ZoneInfo
 import fitz  # PyMuPDF
 import numpy as np
-import matplotlib.pyplot as plt
-from io import BytesIO
 import os
 import hashlib
 import time
-import uuid
-import base64
-from google import genai
-from google.genai import types
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
+from matplotlib.lines import Line2D
+from io import BytesIO
+import math
+import json
+import pathlib
 
 # ===== Configuration =====
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MODEL = "gpt-4o"
 BASE_DIR = os.path.join(os.getcwd(), "Textbook_2025")
-_GEMINI_API_KEY = (
-    st.secrets.get("GOOGLE_API_KEY", None)
-    or st.secrets.get("GEMINI_API_KEY", None)
-    or os.getenv("GOOGLE_API_KEY")
-    or os.getenv("GEMINI_API_KEY")
-)
-GEMINI = genai.Client(api_key=_GEMINI_API_KEY) if _GEMINI_API_KEY else genai.Client()
 PDF_MAP = {
     "Ⅳ. 도형의 성질": ["2025_Math_2nd_04.pdf"]
 }
@@ -78,13 +72,6 @@ MATH_04_PROMPT = (
     "학생에게 내용을 설명하거나 문제를 내줄 때, 필요하다면 그 내용 또는 문제에 해당하는 도형을 자동 생성하여 함께 제시합니다. \n"
 )
 
-IMAGE_BASE_PROMPT = (
-    "중학교 2학년 대상 학습용 그림(다이어그램)을 생성하세요. \n"
-    "한 장의 그림으로 핵심 관계가 명확히 보이도록 선명하고 간결하게 표현합니다. \n"
-    "모든 그림은 불필요한 배경/장식은 제외합니다. \n"
-    "이상의 프롬프트를 반영해, 다음 질문에 관한 이미지를 생성하세요: \n\n"
-)
-
 MATH_05_PROMPT = (
     "당신은 수학의 Ⅴ. XXX 단원 학습 지원을 담당합니다. 아래 1~3을 고려해 학습을 지원하세요. \n"
     "1. 단원의 주요 키워드\n"
@@ -97,6 +84,27 @@ MATH_06_PROMPT = (
     "1. 단원의 주요 키워드\n"
     "2. 학습 지원 지침\n"
     "3. 사용 가능한 이미지 목록:\n"
+)
+
+DIAGRAM_PLANNER_PROMPT = (
+    "당신은 '도형 선택 플래너'입니다. 아래 JSON 스키마로만 답하세요.\n"
+    "질문이 순수 개념/정의 설명만으로 충분하면 need_diagram=false.\n"
+    "그림이 학습에 유의미하면 need_diagram=true로 하고 하나의 도형만 고르세요.\n"
+    "diagram.type은 다음 중 하나: "
+    "['triangle_isosceles','triangle_right','parallelogram','quadrilateral_random','triangle_general']\n"
+    "diagram.params는 길이/각 등 간단 파라미터, diagram.overlays는 보조선/원 표시를 부울로 포함합니다.\n"
+    "가능한 overlays 키: ['angle_bisectors','perp_bisectors','altitudes','incircle','circumcircle','incenter','circumcenter','diagonals']\n"
+    "출력은 반드시 아래 형식의 JSON 한 개만:\n"
+    "{\n"
+    '  "need_diagram": true|false,\n'
+    '  "diagram": {\n'
+    '    "type": "triangle_isosceles" | "triangle_right" | "parallelogram" | "quadrilateral_random" | "triangle_general",\n'
+    '    "params": { /* 예: {"base":6, "side":5} 또는 {"a":3,"b":4} 또는 {"w":6,"h":3,"skew":2} */ },\n'
+    '    "overlays": { "angle_bisectors":false, "perp_bisectors":false, "altitudes":false, "incircle":false, "circumcircle":false, "incenter":false, "circumcenter":false, "diagonals":false }\n'
+    "  },\n"
+    '  "caption": "학생용 간단 캡션 한 줄"\n'
+    "}\n"
+    "주의: need_diagram=false라면 'diagram'과 'caption'은 생략 가능합니다."
 )
 
 def summarize_chunks(chunks, math_prompt, max_chunks=3):
@@ -136,70 +144,132 @@ def clean_inline_latex(text):
     text = re.sub(r"\^circ", "°", text)
     return text
 
-def _save_fig_return_path(fig, fname="diagram.png"):
-    buf = BytesIO()
-    fig.savefig(buf, bbox_inches="tight", dpi=160)
-    buf.seek(0)
-    path = os.path.join(os.getcwd(), fname)
-    with open(path, "wb") as f:
-        f.write(buf.read())
-    plt.close(fig)
-    return path
-
-
-def generate_diagram_image(prompt: str, size: str = "auto"):
-    """
-    LLM이 전달한 diagram_prompt로 도형 이미지를 생성하고,
-    (1) 로컬 파일 경로와 (2) base64 문자열을 함께 반환합니다.
-    """
+def llm_plan_diagram(question, math_prompt, relevant_chunks):
+    """LLM이 그림 필요 여부/종류를 JSON으로 결정하도록 1차 호출."""
+    plan_messages = [
+        {"role": "system", "content": COMMON_PROMPT},
+        {"role": "system", "content": math_prompt},
+        {"role": "system", "content": DIAGRAM_PLANNER_PROMPT},
+        {"role": "system", "content": "다음은 교과서 관련 발췌입니다:\n" + "\n\n".join(relevant_chunks[:3])},
+        {"role": "user", "content": question},
+    ]
     try:
-        # 1) 입력 크기 검증 및 폴백 (기존 로직 유지)
-        allowed = {"1024x1024", "1024x1536", "1536x1024"}
-        if size == "auto":
-            sz = "1024x1024"
-        else:
-            sz = size if size in allowed else "1024x1024"
+        resp = client.chat.completions.create(model=MODEL, messages=plan_messages)
+        txt = resp.choices[0].message.content.strip()
+        plan = json.loads(txt)
+        if not isinstance(plan, dict): raise ValueError("planner JSON must be dict")
+        return plan
+    except Exception:
+        return {"need_diagram": False}
 
-        # 2) OpenAI의 'size' 개념을 Imagen의 'aspect_ratio'로 매핑
-        aspect_map = {
-            "1024x1024": "1:1",
-            "1024x1536": "3:4",
-            "1536x1024": "4:3",
-        }
-        aspect = aspect_map.get(sz, "1:1")
+def _facts_triangle_isosceles(A, B, C):
+    # 기본 등식/수직이등분선 성질
+    facts = {
+        "type": "triangle_isosceles",
+        "points": {"A": A, "B": B, "C": C},
+        "equalities": ["AB=AC"], 
+        "perpendicular": ["AD ⟂ BC"], 
+        "bisectors": ["AD is angle bisector at A", "AD is perpendicular bisector of BC"]
+    }
+    return facts
 
-        response = GEMINI.models.generate_images(
-            model="imagen-4.0-ultra-generate-001",
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio=aspect,
-            ),
-        )
+def _facts_triangle_right(A, B, C, a, b):
+    c = float(np.hypot(a, b))
+    facts = {
+        "type": "triangle_right",
+        "points": {"A": A, "B": B, "C": C},
+        "right_angle_at": "A",
+        "lengths": {"AB": float(a), "AC": float(b), "BC": float(c)},
+        "perpendicular": ["AB ⟂ AC"],
+        "pythagoras": "AB^2 + AC^2 = BC^2"
+    }
+    return facts
 
-        generated = response.generated_images[0].image
-        filename = os.path.join(os.getcwd(), f"diagram_{uuid.uuid4().hex}.png")
+def _facts_parallelogram(A, B, C, D):
+    facts = {
+        "type": "parallelogram",
+        "points": {"A": A, "B": B, "C": C, "D": D},
+        "parallel": ["AB ∥ CD", "AD ∥ BC"],
+        "diagonals": "AC and BD bisect each other",
+        "equal_sides": ["AB=CD", "AD=BC"]
+    }
+    return facts
 
-        # 파일 저장 + b64 획득
-        try:
-            # PIL.Image 객체인 경우
-            generated.save(filename, format="PNG")
-            with open(filename, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("utf-8")
-        except Exception:
-            # raw bytes인 경우 대비
-            img_bytes = getattr(generated, "image_bytes", None) or generated
-            if not isinstance(img_bytes, (bytes, bytearray)):
-                img_bytes = base64.b64decode(img_bytes)
-            with open(filename, "wb") as f:
-                f.write(img_bytes)
-            b64 = base64.b64encode(img_bytes).decode("utf-8")
+def _facts_quad(A,B,C,D):
+    facts = {
+        "type": "quadrilateral",
+        "points": {"A":A,"B":B,"C":C,"D":D},
+        "note": "Diagonals drawn for comparison"
+    }
+    return facts
 
-        return filename, b64
+def render_diagram_from_spec(spec):
+    """
+    spec: {"type":..., "params":{...}, "overlays":{...}}
+    반환: (img_path, facts_dict, spec_for_storage)
+    """
+    t = spec.get("type")
+    params = spec.get("params", {}) or {}
+    overlays = spec.get("overlays", {}) or {}
+    # 기본 좌표는 각 그리기 함수 내부 정의와 일치시킵니다.
 
-    except Exception as e:
-        st.warning(f"도형 이미지 생성 실패: {e}")
-        return "", ""
+    if t == "triangle_isosceles":
+        base = float(params.get("base", 6.0)); side = float(params.get("side", 5.0))
+        img = draw_isosceles(base=base, side=side, overlays=overlays)
+        A=(0.0,0.0); B=(base,0.0); C=(base/2.0, max(0.5, (side**2-(base/2.0)**2)**0.5) if side>base/2.0 else 3.0)
+        facts = _facts_triangle_isosceles(A,B,C)
+
+    elif t == "triangle_right":
+        a = float(params.get("a", 3.0)); b = float(params.get("b", 4.0))
+        seed = int(hashlib.md5(json.dumps(params, sort_keys=True).encode("utf-8")).hexdigest(),16)%4
+        img = draw_right_triangle(a=a, b=b, seed=seed, overlays=overlays, show_squares=bool(overlays.get("squares", False)))
+        # 우리 구현의 기본 배치: A=(0,0), B=(a,0) 또는 회전/대칭. facts는 회전 무관 성질만 제공합니다.
+        A=(0.0,0.0); B=(a,0.0); C=(0.0,b)
+        facts = _facts_triangle_right(A,B,C,a,b)
+
+    elif t == "parallelogram":
+        w = float(params.get("w", 6.0)); h = float(params.get("h", 3.0)); skew=float(params.get("skew",2.0))
+        img = draw_parallelogram(w=w,h=h,skew=skew,show_diagonals=bool(overlays.get("diagonals", True)))
+        A=(0.0,0.0); B=(w,0.0); C=(w+skew,h); D=(skew,h)
+        facts = _facts_parallelogram(A,B,C,D)
+
+    elif t == "quadrilateral_random":
+        img = draw_random_quadrilateral(show_diagonals=True)
+        # 임의 사각형은 좌표를 런타임에 생성하므로, 여기서는 일반 설명만 남깁니다.
+        facts = _facts_quad("A","B","C","D")
+
+    else:  # triangle_general 등 → 등변 기본으로 fallback
+        base = float(params.get("base", 6.0)); side = float(params.get("side", 5.0))
+        img = draw_isosceles(base=base, side=side, overlays=overlays)
+        A=(0.0,0.0); B=(base,0.0); C=(base/2.0, max(0.5, (side**2-(base/2.0)**2)**0.5) if side>base/2.0 else 3.0)
+        facts = _facts_triangle_isosceles(A,B,C)
+
+    return img, facts, spec
+
+# ===== File-based persistence (No DB) =====
+PERSIST_ROOT = pathlib.Path("./_persist")  # 프로젝트 폴더 내 저장소
+
+def _safe(name: str) -> str:
+    # 파일/폴더 이름에 쓸 수 있도록 최소 정제
+    return "".join(ch for ch in name if ch.isalnum() or ch in ("-_",)).strip() or "unknown"
+
+def _conv_dir(student_id: str, code: str, subject: str, topic: str) -> pathlib.Path:
+    d = PERSIST_ROOT / _safe(student_id) / _safe(code) / _safe(subject) / _safe(topic)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+def save_conversation_file(student_id: str, code: str, subject: str, topic: str, msgs: list):
+    d = _conv_dir(student_id, code, subject, topic)
+    with open(d / "conversation.json", "w", encoding="utf-8") as f:
+        json.dump(msgs, f, ensure_ascii=False, indent=2)
+
+def load_conversation_file(student_id: str, code: str, subject: str, topic: str) -> list:
+    d = _conv_dir(student_id, code, subject, topic)
+    p = d / "conversation.json"
+    if p.exists():
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
 
 # RAG pipelines
 def extract_text_from_pdf(path):
@@ -320,14 +390,20 @@ def chatbot_tab(subject, topic):
     input_key = f"buffer_{key}"
     widget_key_base = f"textarea_{key}"
 
-    # 1) 세션 초기화
-    if key not in st.session_state:
-        st.session_state[key] = load_chat(subject, topic)
+    # 1) 세션 초기화 (DB 미사용: 파일 기반 로드)
     if load_key not in st.session_state:
         st.session_state[load_key] = False
+
+    # 계정 식별값(학번/식별코드)로 대화 파일 경로를 정합니다.
+    student_id = st.session_state.get("user_number", "").strip()
+    code = st.session_state.get("user_code", "").strip()
+
+    if key not in st.session_state:
+        # 파일에서 기존 대화를 불러옵니다. (없으면 빈 리스트)
+        st.session_state[key] = load_conversation_file(student_id, code, subject, topic)
+
     msgs = st.session_state[key]
 
-    # Select the appropriate math prompt for this unit
     math_prompts = {
         "Ⅳ. 도형의 성질": MATH_04_PROMPT
     }
@@ -335,16 +411,22 @@ def chatbot_tab(subject, topic):
 
     # 2) 기존 메시지 렌더링
     last_user_msg = None      # 직전 사용자 메시지
-    last_assistant = None     # 직전 어시스턴트 메시지(답변 본문)
-
     for msg in msgs:
         if msg["role"] == "user":
             st.write(f"**You:** {msg['content']}")
             last_user_msg = msg["content"]
         else:
-            # assistant 메시지 렌더링
-            parts = re.split(r"(@@@@@.*?@@@@@)", msg['content'], flags=re.DOTALL)
-            rendered_text = []
+            raw = msg["content"]
+
+            # 숨은 다이어그램 블록 추출(보여주지는 않음)
+            spec_blocks = re.findall(r"```diagram_spec\s*(\{.*?\})\s*```", raw, flags=re.DOTALL)
+            facts_blocks = re.findall(r"```diagram_facts\s*(\{.*?\})\s*```", raw, flags=re.DOTALL)
+            # 실제 표시용 텍스트(숨은 블록 제거)
+            visible = re.sub(r"```diagram_spec\s*\{.*?\}\s*```", "", raw, flags=re.DOTALL)
+            visible = re.sub(r"```diagram_facts\s*\{.*?\}\s*```", "", visible, flags=re.DOTALL)
+
+            # LaTeX 블록/이미지 링크/일반 텍스트 렌더
+            parts = re.split(r"(@@@@@.*?@@@@@)", visible, flags=re.DOTALL)
             for part in parts:
                 if part.startswith("@@@@@") and part.endswith("@@@@@"):
                     st.latex(part[5:-5].strip())
@@ -355,15 +437,16 @@ def chatbot_tab(subject, topic):
                         txt = txt.replace(link, "")
                     if txt.strip():
                         st.write(f"**학습 도우미:** {txt.strip()}")
-                        rendered_text.append(txt.strip())
-            last_assistant = "\n".join(rendered_text) if rendered_text else None
 
-            # 조건부: 이 메시지에 '미리 생성된 도형' 정보가 있으면 표시
-            if msg.get("need_diagram"):
-                if msg.get("diagram_image_b64"):
-                    st.image(base64.b64decode(msg["diagram_image_b64"]), caption="AI가 생성한 그림으로, 부정확할 수 있습니다.")
-                elif msg.get("diagram_image_path"):
-                    st.image(msg["diagram_image_path"], caption="AI가 생성한 그림으로, 부정확할 수 있습니다.")
+            # 다이어그램 스펙이 저장되어 있으면, 여기서만 그림 생성/표시 (필요한 경우에만)
+            if spec_blocks:
+                try:
+                    spec = json.loads(spec_blocks[-1])
+                    img_path, _, _ = render_diagram_from_spec(spec)
+                    if img_path and os.path.exists(img_path):
+                        st.image(img_path, caption="도형(자동 생성)")
+                except Exception:
+                    pass
 
     # 3) 입력창 & 버튼 (토글 방식)
     placeholder = st.empty()
@@ -429,25 +512,9 @@ def chatbot_tab(subject, topic):
             stage = st.empty()
             show_stage("답변 생성 중...")
             time.sleep(0.5)
-
-            # ── LLM 시스템 지시: JSON 형식 강제 ─────────────────────────────
             system_messages = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_math_prompt},
-                {"role": "system", "content":
-                    (
-                        "이후 모든 답변은 반드시 다음 JSON 형식 '한 개'로만 출력하세요.\n"
-                        "{\n"
-                        '  "answer": "<학생에게 보여줄 최종 답변 텍스트 — LaTeX 규칙(@@@@@) 준수>",\n'
-                        '  "need_diagram": true | false,\n'
-                        '  "diagram_prompt": "<그려야 할 도형을 한국어로 간결히 설명 — 한 장의 그림 기준, 필요한 보조선/표시 포함; 필요 없으면 빈 문자열>",\n'
-                        '  "diagram_size": "auto | 1024x1024 | 1024x1536 | 1536x1024"\n'
-                        "}\n"
-                        "그림이 불필요하면 need_diagram=false로 하고, diagram_prompt는 빈 문자열로 두세요. "
-                        "한 대화에서는 하나의 그림만 사용합니다."
-                        "도형이나 위치관계 설명이 포함되면 가급적 need_diagram=true 로 설정합니다."
-                    )
-                },
             ]
 
             history = [{"role": msg["role"], "content": msg["content"]} for msg in msgs]
@@ -462,70 +529,159 @@ def chatbot_tab(subject, topic):
                 )
             }
 
+            # 1차 응답(텍스트) 생성: 교과서 RAG 컨텍스트 + 대화 기록 반영
             prompt = system_messages + history + [
                 rag_system_message,
                 {"role": "user", "content": q}
             ]
+            resp_main = client.chat.completions.create(model=MODEL, messages=prompt)
+            ans_text = resp_main.choices[0].message.content
 
-            resp = client.chat.completions.create(model=MODEL, messages=prompt)
-            raw = resp.choices[0].message.content
+            # 도식 필요성/유형 '계획' 프롬프트: LLM이 스스로 판단하게 함
+            planner_system = {
+                "role": "system",
+                "content": (
+                    "너는 수학 문제/설명에 필요한 도형을 '계획'하는 설계자다. "
+                    "출력은 JSON 한 줄이어야 한다. 키: "
+                    "{need_diagram: bool, reason: str, "
+                    "shape: 'isosceles_triangle'|'right_triangle'|'incenter'|'circumcenter'|'parallelogram'|'quadrilateral', "
+                    "labels: {A:[x,y],B:[x,y],C:[x,y],D:[x,y]}, "
+                    "helpers: [{type:'altitude'|'bisector'|'median'|'perpendicular'|'parallel', from:'A'|'B'|'C'|'D', to:'B'|'C'|'D'|'side:AB'}, "
+                    "…], caption: str}"
+                )
+            }
+            planner_user = {
+                "role": "user",
+                "content": (
+                    "학생 질문: " + q + "\n\n"
+                    "관련 교과서 요약 청크:\n" + "\n\n".join(relevant) + "\n\n"
+                    "위 맥락을 반영하여, 도형이 **필요하면** need_diagram=true로 하고, "
+                    "필요 없으면 false로 하라. 좌표는 [0,1] 범위에서 대략 배치하면 된다."
+                )
+            }
 
-            # ── JSON 강제 추출: 코드펜스/서문 제거 후 첫 번째 {...}만 파싱 ─────────
-            raw = raw.strip()
+            resp_plan = client.chat.completions.create(
+                model=MODEL,
+                messages=[planner_system, planner_user]
+            )
+            _raw_plan = resp_plan.choices[0].message.content.strip()
 
-            # 코드펜스 제거
-            raw = re.sub(r'^```(?:json)?\s*', '', raw)
-            raw = re.sub(r'\s*```$', '', raw)
+            # JSON 안전 파서
+            import json, re
+            def _extract_json(s: str):
+                m = re.search(r"\{.*\}", s, flags=re.DOTALL)
+                return json.loads(m.group(0)) if m else {"need_diagram": False}
+            try:
+                plan = _extract_json(_raw_plan)
+            except Exception:
+                plan = {"need_diagram": False}
 
-            # 본문에서 첫 번째 JSON 객체만 추출
-            m = re.search(r'\{.*\}', raw, re.DOTALL)
-            if m:
-                json_str = m.group(0)
-                try:
-                    parsed = json.loads(json_str)
-                    ans = (parsed.get("answer") or "").strip()
-                    need_diagram = bool(parsed.get("need_diagram", False))
-                    diagram_prompt = (parsed.get("diagram_prompt") or "").strip()
-                    diagram_size = (parsed.get("diagram_size") or "auto").strip()
-                except Exception:
-                    # JSON이 잡혔지만 파싱 실패 → 전체를 텍스트로 표기(최후 방어)
-                    ans = raw
-                    need_diagram = False
-                    diagram_prompt = ""
-                    diagram_size = "auto"
-            else:
-                # JSON 블록 자체가 없으면 전부 텍스트로 간주
-                ans = raw
-                need_diagram = False
-                diagram_prompt = ""
-                diagram_size = "auto"
+            # 도형 렌더 함수(간단 버전) - 필요한 최소 유형만 지원
+            from io import BytesIO
+            import math
+            import matplotlib.pyplot as plt
+            from matplotlib.patches import Polygon
+            from matplotlib.lines import Line2D
 
-            # ── (조건부) 도형 즉시 생성 ────────
-            diagram_image_path = None
-            diagram_image_b64 = None
-            if need_diagram:
-                stage.empty()
-                stage = st.empty()
-                show_stage("그림 생성 중...")
-                time.sleep(0.3)
-                final_imagen_prompt = f"{MATH_04_PROMPT}\n{IMAGE_BASE_PROMPT}\n\n학생 질문: {q}"
-                diagram_image_path, diagram_image_b64 = generate_diagram_image(final_imagen_prompt, size=diagram_size)
+            def _pt(name, labels, fallback):
+                return tuple(labels.get(name, fallback))
 
+            def render_diagram_from_plan(plan_dict):
+                """plan_dict 기준으로 간단한 도형을 PNG 바이트로 반환"""
+                fig, ax = plt.subplots(figsize=(4, 4), dpi=200)
+                ax.set_aspect("equal")
+                ax.axis("off")
+
+                labels = plan_dict.get("labels", {})
+                shape  = plan_dict.get("shape", "quadrilateral")
+                helpers = plan_dict.get("helpers", [])
+
+                if shape in ("isosceles_triangle", "right_triangle", "incenter", "circumcenter"):
+                    A = _pt("A", labels, (0.15, 0.2))
+                    B = _pt("B", labels, (0.85, 0.2))
+                    if shape == "isosceles_triangle":
+                        C = _pt("C", labels, (0.5, 0.8))
+                    elif shape == "right_triangle":
+                        C = _pt("C", labels, (0.15, 0.8))
+                    else:
+                        C = _pt("C", labels, (0.55, 0.75))
+                    poly = Polygon([A, B, C], fill=False)
+                    ax.add_patch(poly)
+                    for name, (x, y) in {"A": A, "B": B, "C": C}.items():
+                        ax.plot([x], [y], marker="o")
+                        ax.text(x, y, f" {name}", va="bottom", ha="left")
+
+                    # 보조선 처리(아주 기본형)
+                    for h in helpers:
+                        t = h.get("type")
+                        if t == "altitude" and h.get("from") == "A":
+                            # A에서 BC에 내린 높이(근사)
+                            x1, y1 = A; x2, y2 = B; x3, y3 = C
+                            # BC 중점 근사
+                            xm, ym = ( (x2+x3)/2, (y2+y3)/2 )
+                            ax.add_line(Line2D([x1, xm], [y1, ym], linestyle="--"))
+                        if t == "bisector" and h.get("from") in ("A","B","C"):
+                            # 각의 이등분선(근사)
+                            which = h.get("from")
+                            P = {"A":A,"B":B,"C":C}[which]
+                            ax.add_line(Line2D([P[0], 0.5], [P[1], 0.5], linestyle="--"))
+
+                elif shape in ("parallelogram", "quadrilateral"):
+                    A = _pt("A", labels, (0.2, 0.2))
+                    B = _pt("B", labels, (0.8, 0.25))
+                    D = _pt("D", labels, (0.35, 0.8))
+                    if shape == "parallelogram":
+                        # 평행사변형: B-A와 D-A 벡터를 이용
+                        vx, vy = (B[0]-A[0], B[1]-A[1])
+                        wx, wy = (D[0]-A[0], D[1]-A[1])
+                        C = (A[0]+vx+wx, A[1]+vy+wy)
+                    else:
+                        C = _pt("C", labels, (0.85, 0.75))
+                    poly = Polygon([A, B, C, D], fill=False)
+                    ax.add_patch(poly)
+                    for name, (x, y) in {"A":A,"B":B,"C":C,"D":D}.items():
+                        ax.plot([x], [y], marker="o")
+                        ax.text(x, y, f" {name}", va="bottom", ha="left")
+
+                    # 보조선
+                    for h in helpers:
+                        if h.get("type") == "diagonal" and h.get("from") in ("A","B","C","D") and h.get("to") in ("A","B","C","D"):
+                            P = {"A":A,"B":B,"C":C,"D":D}[h["from"]]
+                            Q = {"A":A,"B":B,"C":C,"D":D}[h["to"]]
+                            ax.add_line(Line2D([P[0], Q[0]],[P[1], Q[1]], linestyle="--"))
+
+                buf = BytesIO()
+                fig.tight_layout(pad=0.1)
+                fig.savefig(buf, format="png", bbox_inches="tight")
+                plt.close(fig)
+                buf.seek(0)
+                return buf
+
+            # 필요 시 도형 생성 및 화면 표시(+ LLM이 이해할 수 있도록 spec도 메시지에 포함)
+            image_caption = ""
+            if plan.get("need_diagram"):
+                buf = render_diagram_from_plan(plan)
+                image_caption = plan.get("caption", "")
+                st.image(buf.getvalue(), caption=image_caption, use_column_width=False)
+
+                # LLM이 도형을 '이해'하도록, 도형 설계 사양을 함께 저장(텍스트로)
+                spec_text = "```diagram_spec\n" + json.dumps(plan, ensure_ascii=False) + "\n```"
+                ans_text = spec_text + "\n\n" + ans_text
+
+            # 6) 메시지 반영 및 저장 (DB 미사용: 파일 기반 저장)
             stage.empty()
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
             msgs.extend([
                 {"role": "user", "content": q, "timestamp": ts},
-                {
-                    "role": "assistant",
-                    "content": ans,
-                    "need_diagram": need_diagram,
-                    "diagram_prompt": diagram_prompt,
-                    "diagram_image_path": diagram_image_path,
-                    "diagram_image_b64": diagram_image_b64
-                }
+                {"role": "assistant", "content": ans_text}
             ])
-            save_chat(subject, topic, msgs)
+
+            # 세션에 반영
             st.session_state[key] = msgs
+
+            # 파일로 영구 저장 (같은 계정이면 나중/다른 기기에서도 복원됨)
+            save_conversation_file(student_id, code, subject, topic, msgs)
+
             st.session_state[load_key] = False
             st.rerun()
 
@@ -548,7 +704,7 @@ def page_2(): # 현재 생략되어 있음
     st.title("⚠️모든 대화 내용은 저장되며, 교사가 열람할 수 있습니다.")
     st.write(
        """  
-        이 시스템은 중3 학생들을 위한 AI 학습 도우미입니다.
+        이 시스템은 중2 학생들을 위한 AI 학습 도우미입니다.
 
         입력된 모든 대화는 저장되며, 교사가 확인할 수 있습니다.
 
