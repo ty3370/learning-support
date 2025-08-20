@@ -502,14 +502,13 @@ def chatbot_tab(subject, topic):
                     # 새 스키마(plan): 'shape' 또는 'labels' 키가 있으면 새 렌더러 사용
                     if isinstance(spec, dict) and ("shape" in spec or "labels" in spec):
                         buf = render_diagram_from_plan(spec)
-                        cap = spec.get("caption", "도형(자동 생성)")
-                        st.image(buf, caption=cap, use_container_width=True)
+                        st.image(buf, caption="AI가 생성한 그림으로, 부정확할 수 있습니다.", use_container_width=True)
 
                     else:
                         # 옛 스키마(type/params): 기존 렌더러 사용
                         img_path, _, _ = render_diagram_from_spec(spec)
                         if img_path and os.path.exists(img_path):
-                            st.image(img_path, caption="도형(자동 생성)", use_container_width=True)
+                            st.image(img_path, caption="AI가 생성한 그림으로, 부정확할 수 있습니다.", use_container_width=True)
 
                 except Exception as e:
                     st.warning(f"그림 표시 중 오류: {e}")
@@ -650,8 +649,7 @@ def chatbot_tab(subject, topic):
             image_caption = ""
             if plan.get("need_diagram"):
                 buf = render_diagram_from_plan(plan)
-                image_caption = plan.get("caption", "")
-                st.image(buf, caption=image_caption, use_container_width=True)
+                st.image(buf, caption="AI가 생성한 그림으로, 부정확할 수 있습니다.", use_container_width=True)
 
                 # LLM이 도형을 '이해'하도록, 도형 설계 사양을 함께 저장(텍스트로)
                 spec_text = "```diagram_spec\n" + json.dumps(plan, ensure_ascii=False) + "\n```"
