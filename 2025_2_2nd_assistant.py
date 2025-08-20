@@ -16,7 +16,7 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 MODEL = "gpt-4o"
 BASE_DIR = os.path.join(os.getcwd(), "Textbook_2025")
 PDF_MAP = {
-    "Ⅳ. 도형의 성질": ["2025_Math_2nd_04.pdf"]
+    "Ⅳ. 도형의 성질(Text)": ["2025_Math_2nd_04.pdf"]
 }
 SUBJECTS = {"2학년 수학": list(PDF_MAP.keys())}
 
@@ -280,7 +280,7 @@ def chatbot_tab(subject, topic):
     msgs = st.session_state[key]
 
     math_prompts = {
-        "Ⅳ. 도형의 성질": MATH_04_PROMPT
+        "Ⅳ. 도형의 성질(Text)": MATH_04_PROMPT
     }
     selected_math_prompt = math_prompts.get(topic, "")
 
