@@ -112,6 +112,7 @@ def clean_inline_latex(text):
     text = re.sub(r"\b(plus)\b", "+", text)
     text = re.sub(r"\b(minus)\b", "-", text)
     text = re.sub(r"\^\s*\\circ", "°", text)
+    text = re.sub(r"\^circ", "°", text)
     return text
 
 # RAG pipelines
