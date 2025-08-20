@@ -313,7 +313,7 @@ def chatbot_tab(subject, topic):
 
             # 조건부: 이 메시지에 '미리 생성된 도형' 정보가 있으면 표시
             if msg.get("need_diagram") and msg.get("diagram_image_path"):
-                st.image(msg["diagram_image_path"], caption="AI가 생성한 도형")
+                st.image(msg["diagram_image_path"], caption="AI가 생성한 그림으로, 부정확할 수 있습니다.")
 
     # 3) 입력창 & 버튼 (토글 방식)
     placeholder = st.empty()
