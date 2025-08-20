@@ -59,7 +59,7 @@ MATH_04_PROMPT = (
     "여러 가지 사각형의 성질, 여러 가지 사각형 사이의 관계 \n"
     "직사각형, 직사각형의 성질, 마름모, 마름모의 성질, 정사각형, 정사각형의 성질 \n\n"
     "2. 학습 지원 지침\n"
-    "별도의 학습 지원 지침은 없습니다. \n"
+    "이 단원에서는 어떠한 그림도 사용할 수 없으므로, 설명을 하거나 문제를 낼 때 그림이 있다는 듯한 표현(예: 오른쪽 그림과 같이)을 하면 안 됩니다. \n"
     "3. 사용 가능한 이미지 목록:\n"
     "이 단원에서는 사용 가능한 이미지가 없습니다. \n"
 )
@@ -111,6 +111,7 @@ def clean_inline_latex(text):
     text = re.sub(r"\b(div|divided by)\b", "÷", text)
     text = re.sub(r"\b(plus)\b", "+", text)
     text = re.sub(r"\b(minus)\b", "-", text)
+    text = re.sub(r"\^\s*\\circ", "°", text)
     return text
 
 # RAG pipelines

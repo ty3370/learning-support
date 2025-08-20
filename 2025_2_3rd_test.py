@@ -190,6 +190,7 @@ def clean_inline_latex(text):
     text = re.sub(r"\b(div|divided by)\b", "÷", text)
     text = re.sub(r"\b(plus)\b", "+", text)
     text = re.sub(r"\b(minus)\b", "-", text)
+    text = re.sub(r"\^\s*\\circ", "°", text)
     return text
 
 # RAG pipelines
