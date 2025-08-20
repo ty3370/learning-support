@@ -162,13 +162,11 @@ def make_diagram_prompt_without_chunks(question: str) -> str:
 def generate_diagram_image(prompt: str, size: str = "auto") -> str:
     """
     LLM이 전달한 diagram_prompt로 도형 이미지를 생성하고, 로컬 파일 경로를 반환합니다.
-    - Google Gemini API(Imagen 4 Fast) 사용 (model: imagen-4.0-fast-generate-001)
     - size 입력은 내부적으로 Imagen의 aspect_ratio로 매핑됩니다.
       * '1024x1024' -> '1:1'
       * '1024x1536' -> '3:4'
       * '1536x1024' -> '4:3'
       * 'auto' 또는 그 외 -> '1:1'
-    참고: Imagen 4 Fast의 모델 코드는 공식 문서의 Model versions에 명시되어 있습니다. (imagen-4.0-fast-generate-001)
     """
     try:
         # 1) 입력 크기 검증 및 폴백 (기존 로직 유지)
@@ -192,7 +190,7 @@ def generate_diagram_image(prompt: str, size: str = "auto") -> str:
 
         # 3) Imagen 4 Fast 호출
         response = GEMINI.models.generate_images(
-            model="imagen-4.0-fast-generate-001",
+            model="imagen-4.0-ultra-generate-001",
             prompt=prompt,
             config=types.GenerateImagesConfig(
                 number_of_images=1,
