@@ -128,16 +128,21 @@ def _save_fig_return_path(fig, fname="diagram.png"):
     plt.close(fig)
     return path
 
-def generate_diagram_image(prompt: str) -> str:
+def generate_diagram_image(prompt: str, size: str = "auto") -> str:
     """
     LLM이 전달한 diagram_prompt로 도형 이미지를 생성하고, 로컬 파일 경로를 반환합니다.
     - OpenAI Images API를 사용 (model: gpt-image-1)
+    - size: '1024x1024' | '1024x1536' | '1536x1024' | 'auto'
     """
     try:
+        # 허용 크기 검증 및 폴백
+        allowed = {"1024x1024", "1024x1536", "1536x1024", "auto"}
+        sz = size if size in allowed else "auto"
+
         result = client.images.generate(
             model="gpt-image-1",
             prompt=prompt,
-            size="512x512",
+            size=sz,
             n=1
         )
         b64 = result.data[0].b64_json
@@ -385,7 +390,8 @@ def chatbot_tab(subject, topic):
                         "{\n"
                         '  "answer": "<학생에게 보여줄 최종 답변 텍스트 — LaTeX 규칙(@@@@@) 준수>",\n'
                         '  "need_diagram": true | false,\n'
-                        '  "diagram_prompt": "<그려야 할 도형을 한국어로 간결히 설명 — 한 장의 그림 기준, 필요한 보조선/표시 포함; 필요 없으면 빈 문자열>"\n'
+                        '  "diagram_prompt": "<그려야 할 도형을 한국어로 간결히 설명 — 한 장의 그림 기준, 필요한 보조선/표시 포함; 필요 없으면 빈 문자열>",\n'
+                        '  "diagram_size": "auto | 1024x1024 | 1024x1536 | 1536x1024"\n'
                         "}\n"
                         "그림이 불필요하면 need_diagram=false로 하고, diagram_prompt는 빈 문자열로 두세요. "
                         "한 대화에서는 하나의 그림만 사용합니다."
@@ -419,10 +425,12 @@ def chatbot_tab(subject, topic):
                 ans = parsed.get("answer", "").strip()
                 need_diagram = bool(parsed.get("need_diagram", False))
                 diagram_prompt = (parsed.get("diagram_prompt") or "").strip()
+                diagram_size = (parsed.get("diagram_size") or "auto").strip()   # ✅ 추가
             except Exception:
                 ans = raw.strip()
                 need_diagram = False
                 diagram_prompt = ""
+                diagram_size = "auto"                                           # ✅ 추가
 
             # ── (조건부) 도형 즉시 생성: show_stage 표시 후 이미지 생성 ────────
             diagram_image_path = None
@@ -431,7 +439,7 @@ def chatbot_tab(subject, topic):
                 stage = st.empty()
                 show_stage("도형 생성 중...")
                 time.sleep(0.3)
-                diagram_image_path = generate_diagram_image(diagram_prompt)
+                diagram_image_path = generate_diagram_image(diagram_prompt, size=diagram_size)  # ✅ size 전달
 
             stage.empty()
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
