@@ -419,7 +419,7 @@ def chatbot_tab(subject, topic):
             raw = msg["content"]
 
             # 숨은 다이어그램 블록 추출(보여주지는 않음)
-            spec_blocks = re.findall(r"```diagram_spec\s*(\{.*?\})\s*```", response, flags=re.DOTALL)
+            spec_blocks = re.findall(r"```diagram_spec\s*(\{.*?\})\s*```", raw, flags=re.DOTALL)
             facts_blocks = re.findall(r"```diagram_facts\s*(\{.*?\})\s*```", raw, flags=re.DOTALL)
             # 실제 표시용 텍스트(숨은 블록 제거)
             visible = re.sub(r"```diagram_spec\s*\{.*?\}\s*```", "", raw, flags=re.DOTALL)
@@ -567,7 +567,6 @@ def chatbot_tab(subject, topic):
             _raw_plan = resp_plan.choices[0].message.content.strip()
 
             # JSON 안전 파서
-            import json, re
             def _extract_json(s: str):
                 m = re.search(r"\{.*\}", s, flags=re.DOTALL)
                 return json.loads(m.group(0)) if m else {"need_diagram": False}
