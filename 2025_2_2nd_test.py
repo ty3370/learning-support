@@ -391,8 +391,8 @@ def chatbot_tab(subject, topic):
     widget_key_base = f"textarea_{key}"
 
     # 1) 세션 초기화
-     if load_key not in st.session_state:
-         st.session_state[load_key] = False
+    if load_key not in st.session_state:
+        st.session_state[load_key] = False
 
     if key not in st.session_state:
         st.session_state[key] = load_chat(subject, topic)
