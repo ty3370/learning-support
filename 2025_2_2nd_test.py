@@ -390,17 +390,12 @@ def chatbot_tab(subject, topic):
     input_key = f"buffer_{key}"
     widget_key_base = f"textarea_{key}"
 
-    # 1) 세션 초기화 (DB 미사용: 파일 기반 로드)
-    if load_key not in st.session_state:
-        st.session_state[load_key] = False
-
-    # 계정 식별값(학번/식별코드)로 대화 파일 경로를 정합니다.
-    student_id = st.session_state.get("user_number", "").strip()
-    code = st.session_state.get("user_code", "").strip()
+    # 1) 세션 초기화
+     if load_key not in st.session_state:
+         st.session_state[load_key] = False
 
     if key not in st.session_state:
-        # 파일에서 기존 대화를 불러옵니다. (없으면 빈 리스트)
-        st.session_state[key] = load_conversation_file(student_id, code, subject, topic)
+        st.session_state[key] = load_chat(subject, topic)
 
     msgs = st.session_state[key]
 
@@ -667,7 +662,7 @@ def chatbot_tab(subject, topic):
                 spec_text = "```diagram_spec\n" + json.dumps(plan, ensure_ascii=False) + "\n```"
                 ans_text = spec_text + "\n\n" + ans_text
 
-            # 6) 메시지 반영 및 저장 (DB 미사용: 파일 기반 저장)
+            # 6) 메시지 반영 및 저장
             stage.empty()
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
             msgs.extend([
@@ -678,8 +673,8 @@ def chatbot_tab(subject, topic):
             # 세션에 반영
             st.session_state[key] = msgs
 
-            # 파일로 영구 저장 (같은 계정이면 나중/다른 기기에서도 복원됨)
-            save_conversation_file(student_id, code, subject, topic, msgs)
+            # 저장
+            save_chat(subject, topic, msgs)
 
             st.session_state[load_key] = False
             st.rerun()
