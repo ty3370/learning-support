@@ -177,6 +177,9 @@ def clean_inline_latex(text):
     for pattern, symbol in replacements.items():
         text = re.sub(pattern, symbol, text)
 
+    text = re.sub(r"\bperp\b", "⟂", text)
+    text = re.sub(r"\bangle\b", "∠", text)
+
     return text
 
 def llm_plan_diagram(question, math_prompt, relevant_chunks):
