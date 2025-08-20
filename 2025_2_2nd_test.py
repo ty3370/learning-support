@@ -456,10 +456,8 @@ def chatbot_tab(subject, topic):
             # ── (조건부) 도형 즉시 생성: show_stage 표시 후 이미지 생성 ────────
             diagram_image_path = None
             if need_diagram:
-                # 🔒 청크 영향 제거: LLM이 준 diagram_prompt는 쓰지 않고, 질문(q)만 사용
                 diagram_prompt = (
-                    "다음 문제를 한 장의 단순한 도형으로 표현하세요. "
-                    "필요한 보조선/각도/표시는 최소로 하고, 텍스트 표기는 최소화합니다. "
+                    "다음 문제를 한 장의 단순한 도형으로 표현하세요."
                     f"문제 요약: {q[:180]}"
                 )
 
