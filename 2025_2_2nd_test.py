@@ -88,14 +88,14 @@ MATH_06_PROMPT = (
     "3. 사용 가능한 이미지 목록:\n"
 )
 
-def summarize_chunks(chunks, math_prompt, max_chunks=3):
+def summarize_chunks(chunks, unit_prompt, max_chunks=3):
     summaries = []
     for chunk in chunks[:max_chunks]:
         resp = client.chat.completions.create(
             model=MODEL,
             messages=[
                 {"role": "system", "content": COMMON_PROMPT},
-                {"role": "system", "content": math_prompt},
+                {"role": "system", "content": unit_prompt},
                 {"role": "system",
                  "content": "아래 텍스트를 앞서 언급된 키워드 중심으로 정리해 주세요."},
                 {"role": "user",   "content": chunk}
@@ -289,10 +289,10 @@ def chatbot_tab(subject, topic):
         st.session_state[load_key] = False
     msgs = st.session_state[key]
 
-    math_prompts = {
+    unit_prompts = {
         "Ⅳ. 도형의 성질": MATH_04_PROMPT
     }
-    selected_math_prompt = math_prompts.get(topic, "")
+    selected_unit_prompt = unit_prompts.get(topic, "")
 
     # 2) 기존 메시지 렌더링
     for msg in msgs:
@@ -377,7 +377,7 @@ def chatbot_tab(subject, topic):
             time.sleep(0.5)
             system_messages = [
                 {"role": "system", "content": COMMON_PROMPT},
-                {"role": "system", "content": selected_math_prompt},
+                {"role": "system", "content": selected_unit_prompt},
             ]
 
             history = [{"role": msg["role"], "content": msg["content"]} for msg in msgs]

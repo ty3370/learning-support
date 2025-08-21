@@ -157,14 +157,14 @@ SCIENCE_06_PROMPT = (
     "다음 이미지를 사용해 에너지 전환과 보존 문제를 낼 수 있습니다: https://i.imgur.com/YwVXbdP.png \n 이미지에는 코일을 감은 플라스틱 관을 통해 낙하시킨 자석에 A, B의 두 지점이 지정되어 있습니다. A에서 중력에 의한 위치 에너지는 20J, 운동 에너지는 0J입니다. 자석이 코일을 통과한 후 B 지점에서 중력에 의한 위치 에너지는 2J, 운동 에너지는 14J입니다. \n"
 )
 
-def summarize_chunks(chunks, science_prompt, max_chunks=3):
+def summarize_chunks(chunks, unit_prompt, max_chunks=3):
     summaries = []
     for chunk in chunks[:max_chunks]:
         resp = client.chat.completions.create(
             model=MODEL,
             messages=[
                 {"role": "system", "content": COMMON_PROMPT},
-                {"role": "system", "content": science_prompt},
+                {"role": "system", "content": unit_prompt},
                 {"role": "system",
                  "content": "아래 텍스트를 앞서 언급된 키워드 중심으로 정리해 주세요."},
                 {"role": "user",   "content": chunk}
@@ -359,12 +359,12 @@ def chatbot_tab(subject, topic):
     msgs = st.session_state[key]
 
     # Select the appropriate science prompt for this unit
-    science_prompts = {
+    unit_prompts = {
         "Ⅳ. 자극과 반응": SCIENCE_04_PROMPT,
         "Ⅴ. 생식과 유전": SCIENCE_05_PROMPT,
         "Ⅵ. 에너지 전환과 보존": SCIENCE_06_PROMPT
     }
-    selected_science_prompt = science_prompts.get(topic, "")
+    selected_unit_prompt = unit_prompts.get(topic, "")
 
     # 2) 기존 메시지 렌더링
     for msg in msgs:
@@ -449,7 +449,7 @@ def chatbot_tab(subject, topic):
             time.sleep(0.5)
             system_messages = [
                 {"role": "system", "content": COMMON_PROMPT},
-                {"role": "system", "content": selected_science_prompt},
+                {"role": "system", "content": selected_unit_prompt},
             ]
 
             history = [{"role": msg["role"], "content": msg["content"]} for msg in msgs]
