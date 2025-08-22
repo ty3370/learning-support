@@ -130,7 +130,7 @@ def delete_chat_v3(number, name, code, subject, topic):
         return False
 
 # ===== 기본 UI =====
-st.title("학생 AI 대화 이력 조회")
+st.title("학생 AI 대화 이력 조회(개발자용)")
 password = st.text_input("비밀번호를 입력하세요", type="password")
 if password != st.secrets["PASSWORD"]:
     st.stop()
