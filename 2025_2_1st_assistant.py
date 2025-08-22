@@ -242,6 +242,7 @@ def clean_inline_latex(text):
         r"\\infty": "∞",
         r"\\approx": "≈",
         r"\\sim": "∼",
+        r"\\backsim": "∽",
         r"\\neq": "≠",
         r"\\leq": "≤",
         r"\\geq": "≥",
