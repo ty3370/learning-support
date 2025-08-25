@@ -275,6 +275,46 @@ def clean_inline_latex(text):
 
     return text
 
+# ===== LLM Router =====
+ROUTER_SYS = """너는 중학생의 튜터 라우터다.
+사용자 입력과 직전 어시스턴트 메시지를 보고 아래를 JSON으로만 출력한다.
+
+intent:
+- "request_problem" : 문제를 내달라는 요청
+- "submit_answer"   : 직전 문제에 대한 학생의 답 제출(숫자/기호/짧은 문장 포함)
+- "ask_explain"     : 일반 질문/설명 요청 또는 일상 대화
+
+needs_rag:
+- true  : 교과서 근거/정의/원문 인용이 필요한 경우(개념 확인·정의·정리·예시 등)
+- false : 채점/정오 판정, 단순 계산·추론, 일상 대화처럼 교과서가 없어도 충분한 경우
+
+형식(반드시 JSON만):
+{"intent":"request_problem|submit_answer|ask_explain", "needs_rag": true|false, "reason": "한줄 근거"}
+"""
+
+def llm_route(user_text: str, last_assistant_msg: str | None) -> dict:
+    """
+    LLM이 이번 턴의 intent / needs_rag를 판단한다.
+    실패 시 ask_explain/needs_rag=True 기본값을 반환(보수적).
+    """
+    import json, re
+    msgs = [
+        {"role": "system", "content": ROUTER_SYS},
+        {"role": "user", "content":
+            f"사용자 입력:\n{user_text}\n\n직전 어시스턴트 메시지(요약 가능):\n{(last_assistant_msg or '없음')[:1200]}"}
+    ]
+    try:
+        r = client.chat.completions.create(model=MODEL, temperature=0, messages=msgs, max_tokens=160)
+        raw = r.choices[0].message.content
+        m = re.search(r"\{.*\}", raw, re.S)
+        data = json.loads(m.group(0)) if m else {}
+        if not isinstance(data, dict): raise ValueError("router non-dict")
+        data.setdefault("intent", "ask_explain")
+        data.setdefault("needs_rag", True)
+        return data
+    except Exception:
+        return {"intent": "ask_explain", "needs_rag": True, "reason": "router_fallback"}
+
 # RAG pipelines
 def extract_text_from_pdf(path):
     if not os.path.exists(path):
@@ -448,92 +488,105 @@ def chatbot_tab(subject, topic):
                 st.session_state[load_key] = True
                 st.rerun()
 
-    # 4) 로딩 상태일 때만 OpenAI 호출 (하이브리드 방식)
+    # 4) 로딩 상태일 때만 OpenAI 호출 (라우터 → RAG/비RAG 분기)
     if st.session_state[load_key]:
         q = st.session_state.pop(input_key, "")
         if q:
-
             stage = st.empty()
 
-            # PDF 전체 텍스트 읽기
-            stage.empty()
-            stage = st.empty()
-            show_stage("교과서 검색 중...")
-            time.sleep(0.5)
-            texts = [extract_text_from_pdf(os.path.join(BASE_DIR, fn))
-                     for fn in PDF_MAP[topic]]
-            full = "\n\n".join(texts)
+            # 4-1) 직전 어시스턴트 메시지(문제 출제 여부 등) 확보
+            last_assistant_msg = None
+            for m in reversed(msgs):
+                if m["role"] == "assistant":
+                    last_assistant_msg = m["content"]
+                    break
 
-            # 디버깅용
-#            st.write("🧪 사용 중인 파일:", PDF_MAP[topic])
-#            st.write("📄 full 길이:", len(full))
-#            st.write("📄 내용 일부:", full[:300])
-#            for fn in PDF_MAP[topic]:
-#                path = os.path.join(BASE_DIR, fn)
-#                st.write(path, "존재 여부:", os.path.exists(path))
+            # 4-2) LLM 라우터 호출 (규칙 없이 판단)
+            decision = llm_route(q, last_assistant_msg)
+            intent = decision.get("intent", "ask_explain")
+            use_rag = bool(decision.get("needs_rag", True))
 
-            # 한번만: 전체 요약 + embedding 캐시
-            full_hash = hashlib.md5(full.encode("utf-8")).hexdigest()
-            sum_key = f"sum_{subject}_{topic}".replace(" ", "_")
-
-            # 1) 청크·임베딩 캐시
-#            if 'chunks_embs' not in st.session_state:
-#                chunks = chunk_text(full)
-#                embs   = embed_texts(chunks)
-#                st.session_state['chunks_embs'] = (chunks, embs)
-        
-#            chunks, embs = st.session_state['chunks_embs']
-
-            # 질문마다: RAG로 연관 청크 검색
-            stage.empty()
-            stage = st.empty()
-            show_stage("내용 분석 중...")
-            time.sleep(0.5)
-            chunks = chunk_text(full)
-            embs   = embed_texts(chunks)
-            relevant = get_relevant_chunks(q, chunks, embs, top_k=3)
-#            st.write("📎 관련 청크 개수:", len(relevant))
-#            st.write("🔍 청크 미리보기:", relevant)
-
-            # 2) 질문 시: 상위 3개 청크만 가져와 답변 생성
-            relevant = relevant[:3]
-
-            stage.empty()
-            stage = st.empty()
-            show_stage("답변 생성 중...")
-            time.sleep(0.5)
+            # 4-3) 공통 시스템 메시지(비RAG/RAG 공통)
             system_messages = [
                 {"role": "system", "content": COMMON_PROMPT},
                 {"role": "system", "content": selected_unit_prompt},
             ]
+            history = [{"role": m["role"], "content": m["content"]} for m in msgs]
 
-            history = [{"role": msg["role"], "content": msg["content"]} for msg in msgs]
+            # 4-4) 분기: 비RAG(채점/일상 등) ↔ RAG(교과 근거 필요)
+            if not use_rag:
+                # ===== 비RAG 경로: 교과서 검색/임베딩 수행 금지 =====
+                stage.empty()
+                show_stage("빠르게 생각 정리 중...")
 
-            rag_system_message = {
-                "role": "system",
-                "content": (
-                    "아래 청크들은 교과서에서 발췌한 내용입니다. "
-                    "질문과 관련된 청크만 참고해 답변하세요. "
-                    "답변시 교과서의 표현을 철저하게 반영하세요:\n\n"
-                    + "\n\n".join(relevant)
-                )
-            }
+                if intent == "submit_answer":
+                    # 채점 전용 프롬프트 (간결)
+                    judge_sys = (
+                        "당신은 중학생의 튜터 채점관입니다. 학생의 답에 대해 다음 양식으로 답하세요.\n"
+                        "출력: 1) 풀이 과정 2) 판정(정답/오답) 3) 한 줄 피드백(오개념 교정 또는 학습 조언)\n"
+                    )
 
-            prompt = system_messages + history + [
-                rag_system_message,
-                {"role": "user", "content": q}
-            ]
+                    prompt = system_messages + [
+                        {"role": "system", "content": judge_sys},
+                    ] + history + [
+                        {"role": "user", "content": f"학생 답: {q}\n상대 대화 맥락을 고려해 채점/피드백만 간단히 제시."}
+                    ]
+                else:
+                    # 일상 대화/가벼운 질문
+                    smalltalk_sys = (
+                        "당신은 친근한 튜터입니다. 일상 대화/가벼운 질문에는 "
+                        "교과서 인용 없이 한두 문장으로 간단히 답합니다."
+                    )
 
-            resp = client.chat.completions.create(model=MODEL, messages=prompt)
-            ans = resp.choices[0].message.content
-#            rag_info = f"🔍 참고한 내용:\n\n{'\n\n'.join(relevant)}\n\n"
-#            ans = rag_info + ans
+                    prompt = system_messages + [
+                        {"role": "system", "content": smalltalk_sys},
+                    ] + history + [
+                        {"role": "user", "content": q}
+                    ]
+
+                resp = client.chat.completions.create(model=MODEL, messages=prompt)
+                ans = resp.choices[0].message.content
+
+            else:
+                # ===== RAG 경로: 이 블록에서만 교과서 검색/임베딩 수행 =====
+                stage.empty()
+                show_stage("교과서 검색 중...")
+                time.sleep(0.5)
+                texts = [extract_text_from_pdf(os.path.join(BASE_DIR, fn)) for fn in PDF_MAP[topic]]
+                full = "\n\n".join(texts)
+
+                stage.empty()
+                show_stage("내용 분석 중...")
+                time.sleep(0.5)
+                chunks = chunk_text(full)
+                embs = embed_texts(chunks)
+                relevant = get_relevant_chunks(q, chunks, embs, top_k=3)[:3]
+
+                stage.empty()
+                show_stage("답변 생성 중...")
+                time.sleep(0.5)
+                rag_system_message = {
+                    "role": "system",
+                    "content": (
+                        "아래 청크들은 교과서에서 발췌한 내용입니다. "
+                        "질문과 관련된 청크만 참고해 답변하세요. "
+                        "답변시 교과서의 표현을 철저하게 반영하세요:\n\n"
+                        + "\n\n".join(relevant)
+                    ),
+                }
+                prompt = system_messages + history + [rag_system_message, {"role": "user", "content": q}]
+                resp = client.chat.completions.create(model=MODEL, messages=prompt)
+                ans = resp.choices[0].message.content
+
+            # 4-5) 공통: 대화 저장 및 리렌더
             stage.empty()
             ts = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
-            msgs.extend([
-                {"role": "user", "content": q, "timestamp": ts},
-                {"role": "assistant", "content": ans}
-            ])
+            msgs.extend(
+                [
+                    {"role": "user", "content": q, "timestamp": ts},
+                    {"role": "assistant", "content": ans},
+                ]
+            )
             save_chat(subject, topic, msgs)
             st.session_state[key] = msgs
             st.session_state[load_key] = False
