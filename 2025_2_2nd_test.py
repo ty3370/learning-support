@@ -481,7 +481,7 @@ def chatbot_tab(subject, topic):
                 st.session_state[load_key] = True
                 st.rerun()
 
-     # 4) 로딩 상태일 때만 OpenAI 호출 (라우터 → RAG/비RAG 분기)
+    # 4) 로딩 상태일 때만 OpenAI 호출 (라우터 → RAG/비RAG 분기)
     if st.session_state[load_key]:
         q = st.session_state.pop(input_key, "")
         if q:
@@ -518,7 +518,10 @@ def chatbot_tab(subject, topic):
                         "당신은 중학생의 튜터 채점관입니다. 학생의 답에 대해 다음 양식으로 답하세요.\n"
                         "출력: 1) 풀이 과정 2) 판정(정답/오답) 3) 한 줄 피드백(오개념 교정 또는 학습 조언)\n"
                     )
-                    prompt = [{"role": "system", "content": judge_sys}] + history + [
+
+                    prompt = system_messages + [
+                        {"role": "system", "content": judge_sys},
+                    ] + history + [
                         {"role": "user", "content": f"학생 답: {q}\n상대 대화 맥락을 고려해 채점/피드백만 간단히 제시."}
                     ]
                 else:
@@ -527,7 +530,10 @@ def chatbot_tab(subject, topic):
                         "당신은 친근한 튜터입니다. 일상 대화/가벼운 질문에는 "
                         "교과서 인용 없이 한두 문장으로 간단히 답합니다."
                     )
-                    prompt = [{"role": "system", "content": smalltalk_sys}] + history + [
+
+                    prompt = system_messages + [
+                        {"role": "system", "content": smalltalk_sys},
+                    ] + history + [
                         {"role": "user", "content": q}
                     ]
 
