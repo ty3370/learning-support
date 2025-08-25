@@ -559,7 +559,7 @@ def chatbot_tab(subject, topic):
             if not use_rag:
                 # ===== 비RAG 경로: 교과서 검색/임베딩 수행 금지 =====
                 stage.empty()
-                show_stage("빠르게 생각 정리 중...")
+                show_stage("답변 생성 중...")
 
                 if intent == "submit_answer":
                     # 채점 전용 프롬프트 (간결)
